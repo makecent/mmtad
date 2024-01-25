@@ -62,7 +62,7 @@ class TH14Metric(VOCMetric):
                 dets['bboxes'] = (dets['bboxes'] + data['window_offset']) * data['feat_stride'] / data['fps']
             else:
                 # From frame unit to second-unit
-                dets['bboxes'] = (dets['bboxes'] + data['window_offset']) * data['frame_interval'] / data['fps']
+                dets['bboxes'] = (dets['bboxes'] * data['frame_interval'] + data['window_offset']) / data['fps']
             # Set y1, y2 of predictions the fixed value.
             dets['bboxes'][:, 1] = 0.1
             dets['bboxes'][:, 3] = 0.9

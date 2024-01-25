@@ -69,6 +69,7 @@ class THUMOS14Dataset(BaseDetDataset):
 
             # Parsing ground truth
             segments, labels, ignore_flags = self.parse_labels(video_name, video_info)
+            segments_f = segments * video_info['FPS']  # segment annotations based on frame-unit
 
             frame_dir = Path(self.data_prefix['frames']).joinpath(video_name)
             # if not frame_dir.exists():
@@ -127,7 +128,6 @@ class THUMOS14Dataset(BaseDetDataset):
                     else:
                         # During the training, windows have low action footage are skipped
                         # Also known as Integrity-based instance filtering (IBIF)
-                        segments_f = segments * video_info['FPS']
                         valid_mask = SlidingWindow.get_valid_mask(segments_f,
                                                                   np.array([[start_idx, end_idx]],
                                                                            dtype=np.float32),
@@ -136,13 +136,14 @@ class THUMOS14Dataset(BaseDetDataset):
                         if not valid_mask.any():
                             continue
                         # Convert the segment annotations to be relative to the feature window
-                        segments_f = segments_f[valid_mask].clip(min=start_idx, max=end_idx) - start_idx
-                        labels_f = labels[valid_mask]
-                        ignore_flags_f = ignore_flags[valid_mask]
+                        _segments_f = segments_f[valid_mask].clip(min=start_idx, max=end_idx)
+                        segments_p = (_segments_f - start_idx) / self.frame_interval  # frame-unit to point-unit
+                        _labels = labels[valid_mask]
+                        _ignore_flags = ignore_flags[valid_mask]
                         data_info.update(dict(
-                            segments=segments_f,
-                            labels=labels_f,
-                            gt_ignore_flags=ignore_flags_f))
+                            segments=segments_p,
+                            labels=_labels,
+                            gt_ignore_flags=_ignore_flags))
 
                     data_list.append(deepcopy(data_info))
         assert len(data_list) > 0

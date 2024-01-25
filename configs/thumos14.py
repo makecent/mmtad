@@ -3,8 +3,8 @@ dataset_type = 'THUMOS14Dataset'
 data_root = 'my_data/thumos14/'
 
 window_size = 960
-window_stride_train = 720  # overlap=0.75
-window_stride_test = 240  # overlap=0.25
+window_stride_train = 240  # overlap=0.75
+window_stride_test = 720  # overlap=0.25
 frame_interval = 5   # 960/5=192 frames per window
 img_shape = (112, 112)
 img_shape_test = (128, 128)
@@ -49,7 +49,7 @@ train_dataloader = dict(
         iof_thr=0.75,
         skip_short=0.3,  # skip action annotations with duration less than 0.3 seconds
         skip_wrong=True,  # skip action annotations out of the range of video duration
-        data_prefix=dict(frames='rawframes'),
+        data_prefix=dict(frames='rawframes/val'),   # TH14 val set is used for training, following command practices
         filter_cfg=dict(filter_empty_gt=False),
         pipeline=train_pipeline))
 val_dataloader = dict(
@@ -68,7 +68,7 @@ val_dataloader = dict(
         frame_interval=frame_interval,
         skip_short=False,
         skip_wrong=True,
-        data_prefix=dict(frames='rawframes'),
+        data_prefix=dict(frames='rawframes/test'),
         test_mode=True,
         pipeline=test_pipeline))
 test_dataloader = val_dataloader
