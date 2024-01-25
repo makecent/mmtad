@@ -76,16 +76,16 @@ class THUMOS14Dataset(BaseDetDataset):
                 warnings.warn(f'{frame_dir} does not exist.')
                 continue
 
-            # Get the number of frames of the video and the FPS
-            pattern = make_regex_pattern(self.filename_tmpl)
-            imgfiles = [img for img in frame_dir.iterdir() if re.fullmatch(pattern, img.name)]
-            total_frames = len(imgfiles)
-            fps = total_frames / video_info['duration']
+            # # Get the number of frames of the video and the FPS
+            # pattern = make_regex_pattern(self.filename_tmpl)
+            # imgfiles = [img for img in frame_dir.iterdir() if re.fullmatch(pattern, img.name)]
+            # total_frames = len(imgfiles)
+            # fps = total_frames / video_info['duration']
 
-            # # Or you may directly use the information in the annotation file (which are calculated via VideoReader),
-            # # but the `num_frame` and `FPS` may differ from the ones that you extract the frames by yourself.
-            # total_frames = video_info['num_frame']
-            # fps = float(video_info['FPS'])
+            # Or you may directly use the information in the annotation file (which are calculated via VideoReader),
+            # but the `num_frame` and `FPS` may differ from the ones that you extract the frames by yourself.
+            total_frames = video_info['num_frame']
+            fps = float(video_info['FPS'])
 
             data_info = dict(video_name=video_name,
                              frame_dir=osp.join(self.data_prefix['frames'], video_name),
@@ -114,7 +114,7 @@ class THUMOS14Dataset(BaseDetDataset):
                         end_indices = np.append(end_indices, total_frames)
                 else:
                     # Sliding window with fixed stride, and the last windows may be incomplete and need padding
-                    start_indices = np.arange(0, total_frames, self.window_size)
+                    start_indices = np.arange(0, total_frames, self.window_stride)
                     end_indices = (start_indices + self.window_size).clip(max=total_frames)
 
                 # Compute overlapped regions

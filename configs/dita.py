@@ -41,7 +41,7 @@ model = dict(
             type='TemporalDownSampler',
             num_levels=4,
             in_channels=2048,
-            out_channels=2048,
+            out_channels=512,
             # conv_type='Conv3d',
             # kernel_sizes=(3, 3, 3),
             # strides=(2, 1, 1),
@@ -55,7 +55,7 @@ model = dict(
             out_indices=(0, 1, 2, 3)),
         dict(
             type='ChannelMapper',
-            in_channels=[2048, 2048, 2048, 2048],
+            in_channels=[2048, 512, 512, 512],
             kernel_size=1,
             out_channels=256,
             act_cfg=None,
