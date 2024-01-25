@@ -28,7 +28,6 @@ class SlowOnly(nn.Module):
         self.out_indices = out_indices
         self._freeze_bn = freeze_bn
         self._freeze_bn_affine = freeze_bn_affine
-        self.avg_pool = torch.nn.AdaptiveAvgPool3d((None, 1, 1))
 
     @crops_to_batch
     def forward(self, x):
@@ -36,7 +35,7 @@ class SlowOnly(nn.Module):
         for i, block in enumerate(self.blocks):
             x = block(x)
             if i in self.out_indices:
-                outs.append(self.avg_pool(x).flatten(start_dim=2).unsqueeze(-2))
+                outs.append(x)
         if len(outs) == 1:
             return outs[0]
         return outs

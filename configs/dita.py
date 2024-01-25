@@ -38,12 +38,21 @@ model = dict(
                   freeze_bn_affine=True),
     neck=[
         dict(
-            type='DownSampler1D',
+            type='TemporalDownSampler',
             num_levels=4,
             in_channels=2048,
             out_channels=2048,
-            out_indices=(0, 1, 2, 3),
-            mask=False),
+            # conv_type='Conv3d',
+            # kernel_sizes=(3, 3, 3),
+            # strides=(2, 1, 1),
+            # paddings=(1, 1, 1),
+            # pool_position='after',
+            conv_type='Conv1d',
+            kernel_sizes=3,
+            strides=2,
+            paddings=1,
+            pool_position='before',
+            out_indices=(0, 1, 2, 3)),
         dict(
             type='ChannelMapper',
             in_channels=[2048, 2048, 2048, 2048],
@@ -121,14 +130,14 @@ optim_wrapper = dict(
                                     'sampling_offsets': dict(lr_mult=0.1),
                                     'reference_points': dict(lr_mult=0.1)}))
 # learning policy
-max_epochs = 12  # 16 for TadTR
+max_epochs = 6
 param_scheduler = [
     dict(
         type='MultiStepLR',
         begin=0,
         end=max_epochs,
         by_epoch=True,
-        milestones=[10],
+        milestones=[5],
         gamma=0.1)]
 # max_epochs = 16
 # param_scheduler = [

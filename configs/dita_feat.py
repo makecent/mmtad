@@ -31,12 +31,15 @@ model = dict(
     backbone=dict(type='PseudoBackbone', multi_scale=False),  # No backbone since we use pre-extracted features.
     neck=[
         dict(
-            type='DownSampler1D',
+            type='TemporalDownSampler',
             num_levels=4,
             in_channels=2432,
             out_channels=2432,
-            out_indices=(0, 1, 2, 3),
-            mask=False),
+            conv_type='Conv1d',
+            kernel_sizes=3,
+            strides=2,
+            paddings=1,
+            out_indices=(0, 1, 2, 3)),
         dict(
             type='ChannelMapper',
             in_channels=[2432, 2432, 2432, 2432],

@@ -3,7 +3,7 @@ dataset_type = 'THUMOS14Dataset'
 data_root = 'my_data/thumos14/'
 
 window_size = 960
-window_stride_train = 240  # overlap=0.75
+window_stride_train = 720  # overlap=0.75
 window_stride_test = 720  # overlap=0.25
 frame_interval = 5   # 960/5=192 frames per window
 img_shape = (112, 112)

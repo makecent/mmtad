@@ -3,11 +3,11 @@ from typing import List, Tuple
 
 import torch.nn as nn
 from mmcv.cnn import ConvModule
+from mmdet.registry import MODELS
+from mmdet.utils import OptConfigType, OptMultiConfig
 from mmengine.model import BaseModule
 from torch import Tensor
 
-from mmdet.registry import MODELS
-from mmdet.utils import OptConfigType, OptMultiConfig
 
 @MODELS.register_module(force=True)
 class ChannelMapper(BaseModule):
@@ -47,16 +47,16 @@ class ChannelMapper(BaseModule):
     """
 
     def __init__(
-        self,
-        in_channels: List[int],
-        out_channels: int,
-        kernel_size: int = 3,
-        conv_cfg: OptConfigType = None,
-        norm_cfg: OptConfigType = None,
-        act_cfg: OptConfigType = dict(type='ReLU'),
-        num_outs: int = None,
-        init_cfg: OptMultiConfig = dict(
-            type='Xavier', layer='Conv2d', distribution='uniform')
+            self,
+            in_channels: List[int],
+            out_channels: int,
+            kernel_size: int = 3,
+            conv_cfg: OptConfigType = None,
+            norm_cfg: OptConfigType = None,
+            act_cfg: OptConfigType = dict(type='ReLU'),
+            num_outs: int = None,
+            init_cfg: OptMultiConfig = dict(
+                type='Xavier', layer='Conv2d', distribution='uniform')
     ) -> None:
         super().__init__(init_cfg=init_cfg)
         assert isinstance(in_channels, list)

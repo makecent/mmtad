@@ -262,9 +262,9 @@ class PackTADInputs(BaseTransform):
         results.update({'gt_bboxes_labels': results.pop('labels')})
         results.update({"img_id": results.pop("video_name")})
         if 'feat' in results:
-            results.update({'img': results.pop('feat')[None]})
+            results.update({'img': results.pop('feat')})
             # results.update({'img_shape': results['ori_shape']})
-            results.update({'img_shape': (1, results['img'].shape[1])})
+            results.update({'img_shape': (1, len(results['img']))})
             results.update({'ori_shape': (1, results.pop('feat_len'))})
 
         else:
