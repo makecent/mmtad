@@ -72,9 +72,13 @@ class THUMOS14Dataset(BaseDetDataset):
             segments_f = segments * video_info['FPS']  # segment annotations based on frame-unit
 
             frame_dir = Path(self.data_prefix['frames']).joinpath(video_name)
-            # if not frame_dir.exists():
-            #     warnings.warn(f'{frame_dir} does not exist.')
-            #     continue
+            if not frame_dir.exists():
+                warnings.warn(f'{frame_dir} does not exist.')
+                continue
+            # Get the number of frames of the video
+            pattern = make_regex_pattern(self.filename_tmpl)
+            imgfiles = [img for img in frame_dir.iterdir() if re.fullmatch(pattern, img.name)]
+            total_frames = len(imgfiles)
 
             data_info = dict(video_name=video_name,
                              frame_dir=osp.join(self.data_prefix['frames'], video_name),
@@ -85,11 +89,7 @@ class THUMOS14Dataset(BaseDetDataset):
                              labels=labels,
                              gt_ignore_flags=ignore_flags)
 
-            # Get the number of frames of the video
-            # pattern = make_regex_pattern(self.filename_tmpl)
-            # imgfiles = [img for img in frame_dir.iterdir() if re.fullmatch(pattern, img.name)]
-            # total_frames = len(imgfiles)
-            total_frames = video_info['num_frame']
+            # total_frames = video_info['num_frame']
 
             if not self.fix_slice:  # slice randomly
                 assert isinstance(self.pipeline.transforms[0], SlidingWindow)
