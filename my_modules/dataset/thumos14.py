@@ -75,21 +75,26 @@ class THUMOS14Dataset(BaseDetDataset):
             if not frame_dir.exists():
                 warnings.warn(f'{frame_dir} does not exist.')
                 continue
-            # Get the number of frames of the video
+
+            # Get the number of frames of the video and the FPS
             pattern = make_regex_pattern(self.filename_tmpl)
             imgfiles = [img for img in frame_dir.iterdir() if re.fullmatch(pattern, img.name)]
             total_frames = len(imgfiles)
+            fps = total_frames / video_info['duration']
+
+            # # Or you may directly use the information in the annotation file (which are calculated via VideoReader),
+            # # but the `num_frame` and `FPS` may differ from the ones that you extract the frames by yourself.
+            # total_frames = video_info['num_frame']
+            # fps = float(video_info['FPS'])
 
             data_info = dict(video_name=video_name,
                              frame_dir=osp.join(self.data_prefix['frames'], video_name),
                              duration=float(video_info['duration']),
-                             fps=float(video_info['FPS']),
+                             fps=fps,
                              frame_interval=self.frame_interval,
                              segments=segments,
                              labels=labels,
                              gt_ignore_flags=ignore_flags)
-
-            # total_frames = video_info['num_frame']
 
             if not self.fix_slice:  # slice randomly
                 assert isinstance(self.pipeline.transforms[0], SlidingWindow)
