@@ -1,24 +1,30 @@
+# adapted from basicTAD
+import re
 import warnings
 from copy import deepcopy
-import os.path as osp
+from pathlib import Path
 
 import mmengine
 import numpy as np
 from mmdet.datasets import BaseDetDataset
 from mmdet.registry import DATASETS
 from mmengine import print_log, MMLogger
+import os.path as osp
 
 from my_modules.dataset.transform import SlidingWindow
 
 
+def make_regex_pattern(fixed_pattern):
+    # Use regular expression to extract number of digits
+    num_digits = re.search(r'\{:(\d+)\}', fixed_pattern).group(1)
+    # Build the pattern string using the extracted number of digits
+    pattern = fixed_pattern.replace('{:' + num_digits + '}', r'\d{' + num_digits + '}')
+    return pattern
+
+
 @DATASETS.register_module()
-class Thumos14FeatDataset(BaseDetDataset):
-    """Thumos14 dataset for temporal action detection.
-    fix_slice=False, on_the_fly=True:   Randomly slice a feature window from the video feature on the fly.
-    fix_slice=True, on_the_fly=False:   Slice the feature windows with fixed stride. All feat windows are pre-loaded (Fast but high memory).
-    fix_slice=True, on_the_fly=True:    Slice the feature windows with fixed stride. Feat windows are loaded as needed.
-    fix_slice=False, on_the_fly=False:  Not applicable. Dataset of different epoch should have different random slices.
-    """
+class THUMOS14Dataset(BaseDetDataset):
+    """THUMOS14 dataset for temporal action detection."""
 
     metainfo = dict(classes=('BaseballPitch', 'BasketballDunk', 'Billiards', 'CleanAndJerk',
                              'CliffDiving', 'CricketBowling', 'CricketShot', 'Diving', 'FrisbeeCatch', 'GolfSwing',
@@ -27,110 +33,104 @@ class Thumos14FeatDataset(BaseDetDataset):
                     wrong_videos=('video_test_0000270', 'video_test_0001292', 'video_test_0001496'))
 
     def __init__(self,
-                 feat_stride,  # feature are extracted every n frames
+                 window_size,
+                 frame_interval,
+                 window_stride=None,
                  skip_short=False,  # skip too short annotations
                  skip_wrong=False,  # skip videos that are wrong annotated
                  fix_slice=True,
+                 tad_style=True,
                  # whether slice the feature to windows in advance with fixed stride, or slice randomly.
-                 on_the_fly=False,  # whether slice the feature on the fly and pre-slice.
-                 tadtr_style=True,  # whether slice the feature in a TadTR style.
                  iof_thr=0.75,  # The Intersection over Foreground (IoF) threshold used to filter sliding windows.
-                 window_size=None,  # the window size of sliding window.
-                 window_stride=None,  # the window stride of sliding window.
+                 start_index=0,
+                 filename_tmpl='img_{:05}.jpg',
+                 modality: str = 'RGB',
                  **kwargs):
-        self.feat_stride = feat_stride
+        self.window_size = window_size
+        self.frame_interval = frame_interval
+        self.window_stride = window_stride
         self.skip_short = skip_short
         self.skip_wrong = skip_wrong
         self.fix_slice = fix_slice
-        self.on_the_fly = on_the_fly
-        self.tadtr_style = tadtr_style
+        self.tad_style = tad_style
         self.iof_thr = iof_thr
-        self.window_size = window_size
-        self.window_stride = window_stride
-        if fix_slice:
-            assert isinstance(window_size, int)
-            assert isinstance(window_stride, int)
-        super(Thumos14FeatDataset, self).__init__(**kwargs)
+        self.start_index = start_index
+        self.filename_tmpl = filename_tmpl
+        self.modality = modality
+
+        super(THUMOS14Dataset, self).__init__(**kwargs)
 
     def load_data_list(self):
-        # feat_offset = 0.5 * 16 / self.feat_stride
         data_list = []
         ann_file = mmengine.load(self.ann_file)
         for video_name, video_info in ann_file.items():
             if self.skip_wrong and video_name in self.metainfo['wrong_videos']:
                 continue
+
             # Parsing ground truth
             segments, labels, ignore_flags = self.parse_labels(video_name, video_info)
 
-            # Loading features
-            feat_path = osp.join(self.data_prefix['feat'], video_name) + '.npy'
-            if mmengine.exists(feat_path):
-                feat = np.load(feat_path)
-            else:
-                warnings.warn(f"Cannot find feature file {feat_path}, skipped")
-                continue
-            feat_len = len(feat)
+            frame_dir = Path(self.data_prefix['frames']).joinpath(video_name)
+            # if not frame_dir.exists():
+            #     warnings.warn(f'{frame_dir} does not exist.')
+            #     continue
 
             data_info = dict(video_name=video_name,
+                             frame_dir=osp.join(self.data_prefix['frames'], video_name),
                              duration=float(video_info['duration']),
                              fps=float(video_info['FPS']),
-                             feat_stride=self.feat_stride,
+                             frame_interval=self.frame_interval,
                              segments=segments,
                              labels=labels,
                              gt_ignore_flags=ignore_flags)
 
-            if not self.fix_slice and self.on_the_fly:  # slice randomly
+            # Get the number of frames of the video
+            # pattern = make_regex_pattern(self.filename_tmpl)
+            # imgfiles = [img for img in frame_dir.iterdir() if re.fullmatch(pattern, img.name)]
+            # total_frames = len(imgfiles)
+            total_frames = video_info['num_frame']
+
+            if not self.fix_slice:  # slice randomly
                 assert isinstance(self.pipeline.transforms[0], SlidingWindow)
-                data_info.update(dict(feat=feat, feat_len=feat_len))
+                data_info.update(dict(total_frames=total_frames))
                 data_list.append(data_info)
             else:
-                # Perform fixed-stride sliding window
-                if self.tadtr_style:
+                if self.tad_style:
                     # TadTR handles all the complete windows, and if applicable, plus one tail window that covers the remaining content
-                    num_complete_windows = max(0, feat_len - self.window_size) // self.window_stride + 1
+                    num_complete_windows = max(0, total_frames - self.window_size) // self.window_stride + 1
                     # feat_windows = feat_windows[:num_complete_windows]
                     start_indices = np.arange(num_complete_windows) * self.window_stride
-                    end_indices = (start_indices + self.window_size).clip(max=feat_len)
+                    end_indices = (start_indices + self.window_size).clip(max=total_frames)
                     # Handle the tail window
-                    if (feat_len - self.window_size) % self.window_stride != 0 and feat_len > self.window_size:
-                        tail_start = self.window_stride * num_complete_windows if self.test_mode else feat_len - self.window_size
+                    if (total_frames - self.window_size) % self.window_stride != 0 and total_frames > self.window_size:
+                        tail_start = self.window_stride * num_complete_windows if self.test_mode else total_frames - self.window_size
                         start_indices = np.append(start_indices, tail_start)
-                        end_indices = np.append(end_indices, feat_len)
+                        end_indices = np.append(end_indices, total_frames)
                 else:
-                    start_indices = np.arange(feat_len // self.window_stride + 1) * self.window_stride
-                    end_indices = (start_indices + self.window_size).clip(max=feat_len)
+                    # Sliding window with fixed stride, and the last windows may be incomplete and need padding
+                    start_indices = np.arange(0, total_frames, self.window_size)
+                    end_indices = (start_indices + self.window_size).clip(max=total_frames)
+
                 # Compute overlapped regions
                 overlapped_regions = np.array(
                     [[start_indices[i], end_indices[i - 1]] for i in range(1, len(start_indices))])
-                overlapped_regions = overlapped_regions * self.feat_stride / data_info['fps']
+                overlapped_regions = overlapped_regions * self.window_stride / data_info['fps']
 
                 for start_idx, end_idx in zip(start_indices, end_indices):
-                    assert start_idx < end_idx <= feat_len, f"invalid {start_idx, end_idx, feat_len}"
-                    feat_window = feat[start_idx: end_idx]
-                    feat_win_len = len(feat_window)
-
-                    # Padding windows that are shorter than the target window size.
-                    if feat_win_len < self.window_size:
-                        feat_window = np.pad(feat_window,
-                                             ((0, self.window_size - feat_win_len), (0, 0)),
-                                             constant_values=0)
-                    data_info.update(dict(window_offset=start_idx,
-                                          feat_len=feat_win_len))  # before padding for computing the valid feature mask
-                    if self.on_the_fly:
-                        assert isinstance(self.pipeline.transforms[0], SlidingWindow)
-                        data_info.update(dict(feat_path=feat_path))
-                    else:
-                        data_info.update(dict(feat=feat_window))
-
-                    # Convert the format of segment annotations from second-unit to feature-unit.
-                    segments_f = segments * data_info['fps'] / self.feat_stride
+                    data_info.update(dict(
+                        window_offset=start_idx,
+                        valid_len=end_idx - start_idx,
+                        frame_inds=np.arange(start_idx, end_idx, self.frame_interval)))
+                    assert start_idx < end_idx <= total_frames, f"invalid {start_idx, end_idx, total_frames}"
                     if self.test_mode:
                         data_info.update(dict(overlap=overlapped_regions))
                     else:
-                        # During the training, windows has no segment annotated are skipped
+                        # During the training, windows have low action footage are skipped
                         # Also known as Integrity-based instance filtering (IBIF)
+                        segments_f = segments * video_info['FPS']
                         valid_mask = SlidingWindow.get_valid_mask(segments_f,
-                                                                  np.array([[start_idx, end_idx]], dtype=np.float32),
+                                                                  np.array([[start_idx, end_idx]],
+                                                                           dtype=np.float32),
                                                                   iof_thr=self.iof_thr,
                                                                   ignore_flags=ignore_flags)
                         if not valid_mask.any():
@@ -139,23 +139,13 @@ class Thumos14FeatDataset(BaseDetDataset):
                         segments_f = segments_f[valid_mask].clip(min=start_idx, max=end_idx) - start_idx
                         labels_f = labels[valid_mask]
                         ignore_flags_f = ignore_flags[valid_mask]
-                        data_info.update(dict(segments=segments_f,
-                                              labels=labels_f,
-                                              gt_ignore_flags=ignore_flags_f))
+                        data_info.update(dict(
+                            segments=segments_f,
+                            labels=labels_f,
+                            gt_ignore_flags=ignore_flags_f))
 
                     data_list.append(deepcopy(data_info))
-        print_log(f"number of feature windows:\t {len(data_list)}", logger=MMLogger.get_current_instance())
-        # if self.test_mode:
-        #     segments = []
-        #     for i in data_list:
-        #         segments.append(i['segments'][:, 1] - i['segments'][:, 0])
-        #
-        #     seg_len = np.concatenate(segments)
-        #     from mmengine import dump
-        #     dump(seg_len, 'test_seg_len.pkl')
-        # else:
-        #     pass
-        #     # dump(seg_len, 'train_seg_len.pkl')
+        assert len(data_list) > 0
         return data_list
 
     def parse_labels(self, video_name, video_info):
@@ -179,6 +169,7 @@ class Thumos14FeatDataset(BaseDetDataset):
                 if segment[1] - segment[0] < self.skip_short:
                     print_log(f"too short segment annotation in {video_name}: {segment}, skipped",
                               logger=MMLogger.get_current_instance())
+                    continue
 
             # Ambiguous annotations are labeled as ignored ground truth
             if label == 'Ambiguous':
@@ -188,5 +179,15 @@ class Thumos14FeatDataset(BaseDetDataset):
                 labels.append(self.metainfo['classes'].index(label))
                 ignore_flags.append(False)
             segments.append(segment)
-
         return np.array(segments, np.float32), np.array(labels, np.int64), np.array(ignore_flags, dtype=bool)
+
+    def get_data_info(self, idx: int) -> dict:
+        """Get annotation by index."""
+        data_info = super().get_data_info(idx)
+        data_info['start_index'] = self.start_index
+        data_info['modality'] = self.modality
+        data_info['filename_tmpl'] = self.filename_tmpl
+        data_info['num_clips'] = 1   # just for compatible with mmaction2
+        data_info['clip_len'] = self.window_size // self.frame_interval
+
+        return data_info

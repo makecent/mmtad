@@ -1,4 +1,5 @@
 from .dataset import *
+from .backbone import *
 from .detector import *
 from .head import *
 from .loss import *

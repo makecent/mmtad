@@ -53,8 +53,16 @@ class TH14Metric(VOCMetric):
                 bboxes_ignore=gts_ignore.get('bboxes', torch.empty((0, 4))).cpu().numpy(),
                 labels_ignore=gts_ignore.get('labels', torch.empty(0, )).cpu().numpy())
 
-            # Convert the format of segment predictions from feature-unit to second-unit (add window-offset back first).
-            dets['bboxes'] = (dets['bboxes'] + data['offset']) * data['feat_stride'] / data['fps']
+            # Convert the format of segment predictions
+            # 1. Add window-offset back to convert the results from window-based to video(frames/features)-based
+            # 2. Multiply the frame intervals between adjacent data points so convert detection results to frame-unit.
+            # 3. Multiply the FPS to convert detection results to second-unit.
+            if 'feat_stride' in data:
+                # From feature unit to second-unit
+                dets['bboxes'] = (dets['bboxes'] + data['window_offset']) * data['feat_stride'] / data['fps']
+            else:
+                # From frame unit to second-unit
+                dets['bboxes'] = (dets['bboxes'] + data['window_offset']) * data['frame_interval'] / data['fps']
             # Set y1, y2 of predictions the fixed value.
             dets['bboxes'][:, 1] = 0.1
             dets['bboxes'][:, 3] = 0.9

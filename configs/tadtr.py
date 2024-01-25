@@ -1,5 +1,5 @@
 _base_ = [
-    'default_runtime.py', './thumos14.py'
+    'default_runtime.py', './thumos14_feat.py'
 ]
 custom_imports = dict(imports=['my_modules'], allow_failed_imports=False)
 

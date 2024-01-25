@@ -43,14 +43,14 @@ train_pipeline = [
     dict(type='PackDetInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
                     'scale_factor', 'flip', 'flip_direction',
-                    'fps', 'feat_stride', 'offset'))]
+                    'fps', 'feat_stride', 'window_offset'))]
 test_pipeline = [
     dict(type='SlidingWindow', window_size=256, just_loading=True),
     dict(type='ReFormat'),
     dict(type='PackDetInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
                     'scale_factor', 'flip', 'flip_direction',
-                    'fps', 'feat_stride', 'offset', 'overlap'))]
+                    'fps', 'feat_stride', 'window_offset', 'overlap'))]
 train_dataloader = dict(
     dataset=dict(feat_stride=4,
                  fix_slice=True,
