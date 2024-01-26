@@ -38,7 +38,7 @@ class XCLIP_Base32(nn.Module):
         # x: (N, C, T, H, W) -> (NxT, C, H, W)
         x = rearrange(x, 'n c t h w -> (n t) c h w')
         outs = self.vision_model(x).last_hidden_state
-        # outs: (NxT, L , C') -> (N, C', T, L, 1) mimic the (N, C, T, H, W)
+        # outs: (NxT, L , C') -> (N, C', T, L, 1) mimic the NCTHW
         outs = rearrange(outs, '(n t) l c -> n c t l 1', n=n)
         return outs
 
