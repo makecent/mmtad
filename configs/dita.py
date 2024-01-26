@@ -38,7 +38,7 @@ model = dict(
     #               out_indices=(4,),
     #               freeze_bn=True,
     #               freeze_bn_affine=True),
-    backbone=dict(type='XCLIP_Base32', training_input_shape=(112, 112), test_input_shape=(128, 128)),
+    backbone=dict(type='XCLIP_Base32'),
     neck=[
         dict(
             type='TemporalDownSampler',
