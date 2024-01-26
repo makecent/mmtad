@@ -85,7 +85,7 @@ class THUMOS14Dataset(BaseDetDataset):
             # Or you may directly use the information in the annotation file (which are calculated via VideoReader),
             # but the `num_frame` and `FPS` may differ from the ones that you extract the frames by yourself.
             total_frames = video_info['num_frame']
-            fps = float(video_info['FPS'])
+            fps = float(int(video_info['FPS']))
 
             data_info = dict(video_name=video_name,
                              frame_dir=osp.join(self.data_prefix['frames'], video_name),

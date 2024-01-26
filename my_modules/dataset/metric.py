@@ -101,6 +101,7 @@ class TH14Metric(VOCMetric):
         # This NMS, however, is NOT necessary when window stride >= window size, i.e., non-overlapped sliding window.
         logger.info(f'\n Concatenating the testing results ...')
         gts, preds = self.merge_results_of_same_video(gts, preds)
+        logger.info(f'\n Performing NMS ...')
         preds = self.non_maximum_suppression(preds)
         eval_results = OrderedDict()
         if self.metric == 'mAP':
