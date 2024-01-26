@@ -123,7 +123,7 @@ model = dict(
 
 # optimizer
 optim_wrapper = dict(
-    type='OptimWrapper',
+    type='AmpOptimWrapper',
     optimizer=dict(
         type='AdamW',
         lr=lr,

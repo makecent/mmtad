@@ -102,6 +102,7 @@ class THUMOS14Dataset(BaseDetDataset):
                 data_list.append(data_info)
             else:
                 if self.tad_style:
+                    assert self.window_stride <= self.window_size
                     # TadTR handles all the complete windows, and if applicable, plus one tail window that covers the remaining content
                     num_complete_windows = max(0, total_frames - self.window_size) // self.window_stride + 1
                     # feat_windows = feat_windows[:num_complete_windows]
