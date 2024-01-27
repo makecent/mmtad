@@ -274,7 +274,7 @@ class PackTADInputs(BaseTransform):
             results.update({'ori_shape': (1, results.pop('valid_len'))})
 
         results['img_path'] = ''
-        results['scale_factor'] = [1.0, 2.0]    # The second depends on if the backbone scale down temporal length
+        results['scale_factor'] = [1.0, 0.5]    # The second depends on if the backbone scale down temporal length
         results['flip'] = False
         results['flip_direction'] = None
 

@@ -38,7 +38,7 @@ model = dict(
     #               out_indices=(4,),
     #               freeze_bn=True,
     #               freeze_bn_affine=True),
-    backbone=dict(type='VideoMAE_Base', input_shape=(112, 112, 16)),
+    backbone=dict(type='VideoMAE_Base'),
     neck=[
         dict(
             type='TemporalDownSampler',
@@ -123,7 +123,8 @@ model = dict(
 
 # optimizer
 optim_wrapper = dict(
-    type='AmpOptimWrapper',
+    # type='AmpOptimWrapper',
+    type='OptimWrapper',
     optimizer=dict(
         type='AdamW',
         lr=lr,

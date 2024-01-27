@@ -20,7 +20,7 @@ def crops_to_batch(forward_methods):
 @MODELS.register_module()
 class VideoMAE_Base(nn.Module):
 
-    def __init__(self, input_shape=(224, 224, 16)):
+    def __init__(self):
         super(VideoMAE_Base, self).__init__()
         from transformers import VideoMAEModel
         model = VideoMAEModel.from_pretrained("MCG-NJU/videomae-base-finetuned-kinetics")
@@ -30,10 +30,6 @@ class VideoMAE_Base(nn.Module):
         model.embeddings.forward = custom_forward.__get__(model.embeddings, model.embeddings.__class__)
         model.embeddings.patch_embeddings.forward = custom_forward2.__get__(model.embeddings.patch_embeddings,
                                                                             model.embeddings.patch_embeddings.__class__)
-        # Interpolate the positional embeddings in the embedding layer to the target shape
-        # self.resize_pos_embedding(model.embeddings, input_shape)
-        # Change the forward function of embedding layer in X-CLIP to customized forward function
-        # to accept dynamic input shape that coule be different to the training (but need to be square).
 
         self.vision_model = model
 
@@ -46,33 +42,6 @@ class VideoMAE_Base(nn.Module):
         # outs: (N, T'xL, C') -> (N, C', T', L, 1) mimic the NCTHW T'=T/2, L=H'*W'
         outs = rearrange(outs, 'n (t l) c -> n c t l 1', n=n, t=t // 2)
         return outs
-
-    # @staticmethod
-    # def resize_pos_embedding(embed_layer, input_shape):
-    #     """
-    #     Resize the position embeddings of a Vision Transformer.
-    #
-    #     Args:
-    #     - embedding_layer: The original embedding layer (torch.nn.Embedding).
-    #     - new_size: The size of the new feature map (N, where the feature map is N x N).
-    #
-    #     Returns:
-    #     - A new embedding layer with resized positional embeddings.
-    #     """
-    #     patch_embed = embed_layer.patch_embeddings
-    #     if input_shape != patch_embed.image_size:
-    #         patch_size = patch_embed.patch_size
-    #         tubelet_size = patch_embed.tubelet_size
-    #
-    #         num_patches = (
-    #                 (input_shape[0] // patch_size[0]) * (input_shape[1] // patch_size[1]) *
-    #                 (input_shape[2] // tubelet_size)
-    #         )
-    #         embed_layer.num_patches = num_patches
-    #         patch_embed.num_patches = num_patches
-    #         patch_embed.image_size = input_shape
-    #
-    #         embed_layer.position_embeddings = get_sinusoid_encoding_table(num_patches, embed_layer.config.hidden_size)
 
 
 def custom_forward(self, pixel_values, bool_masked_pos):
