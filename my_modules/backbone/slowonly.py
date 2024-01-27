@@ -1,17 +1,7 @@
 import torch
 import torch.nn as nn
-
+from einops import rearrange
 from mmdet.registry import MODELS
-
-
-def crops_to_batch(forward_methods):
-    def wrapper(self, inputs, *args, **kwargs):
-        if inputs.ndim == 6:
-            num_crops = inputs.shape[1]
-            inputs = inputs.view(-1, *inputs.shape[2:])
-        return forward_methods(self, inputs, *args, **kwargs)
-
-    return wrapper
 
 
 @MODELS.register_module()
@@ -29,16 +19,28 @@ class SlowOnly(nn.Module):
         self._freeze_bn = freeze_bn
         self._freeze_bn_affine = freeze_bn_affine
 
-    @crops_to_batch
     def forward(self, x):
+        # The inputs should be (N, M, C, T, H, W), N is the batch size and M = num_crops x num_clips.
+        n, m, c, t, h, w = x.shape
+        num_crops = 1  # TODO: compatible with dynamic num_crops, e.g. num_crops=3 when ThreeCrop as test augmentation
+        num_clips = m // num_crops
+        # x: (N, M, C, T, H, W) -> (NxM, C, T, H, W)
+        x = rearrange(x, 'n m c t h w -> (n m) c t h w')
+
         outs = []
         for i, block in enumerate(self.blocks):
             x = block(x)
             if i in self.out_indices:
-                outs.append(x)
+                if num_clips > 1:
+                    # x: (NxM, C', T', H', W') -> (N x num_crops, C', num_clips x T', H', W')
+                    x_ = rearrange(x, '(n crops clips) c t h w -> (n crops) c (clips t) h w',
+                                   n=n, crops=num_crops, clips=num_clips)
+                else:
+                    x_ = x
+                outs.append(x_)
         if len(outs) == 1:
             return outs[0]
-        return outs
+        return x
 
     def train(self, mode=True):
         super(SlowOnly, self).train(mode)
@@ -49,7 +51,6 @@ class SlowOnly(nn.Module):
                     if self._freeze_bn_affine:
                         m.weight.register_hook(lambda grad: torch.zeros_like(grad))
                         m.bias.register_hook(lambda grad: torch.zeros_like(grad))
-
 
 # from fvcore.nn import FlopCountAnalysis, flop_count_table
 # from torch.profiler import profile, ProfilerActivity, record_function

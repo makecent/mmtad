@@ -10,10 +10,10 @@ window_stride_test = 720  # overlap=0.25
 # window_stride_test = 360  # overlap=0.25
 frame_interval = 5   # 960/5=192 frames per window
 num_clips = 12        # 192/12=16 frame per clip
-# img_shape = (112, 112)
-# img_shape_test = (128, 128)
-img_shape = (224, 224)
-img_shape_test = (224, 224)
+img_shape = (112, 112)
+img_shape_test = (128, 128)
+# img_shape = (224, 224)
+# img_shape_test = (224, 224)
 
 
 train_pipeline = [
