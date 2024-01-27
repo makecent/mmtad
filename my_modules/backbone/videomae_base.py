@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from mmdet.registry import MODELS
+from torch.nn import GroupNorm, LayerNorm
+from mmengine.utils.dl_utils.parrots_wrapper import _BatchNorm, _InstanceNorm
 
 
 @MODELS.register_module()
@@ -14,7 +16,7 @@ class VideoMAE_Base(nn.Module):
     The patch size is 2x16x16.
     """
 
-    def __init__(self):
+    def __init__(self, freeze_norm=True):
         super(VideoMAE_Base, self).__init__()
         from transformers import VideoMAEModel
         model = VideoMAEModel.from_pretrained("MCG-NJU/videomae-base-finetuned-kinetics")
@@ -26,6 +28,7 @@ class VideoMAE_Base(nn.Module):
                                                                             model.embeddings.patch_embeddings.__class__)
 
         self.vision_model = model
+        self.freeze_norm = freeze_norm
 
     def forward(self, x):
         # The inputs should be (N, M, C, T, H, W), N is the batch size and M = num_crops x num_clips.
@@ -42,6 +45,15 @@ class VideoMAE_Base(nn.Module):
             x = rearrange(x, '(n crops clips) c t h w -> (n crops) c (clips t) h w',
                           n=n, crops=num_crops, clips=num_clips)
         return x
+
+    def train(self, mode=True):
+        super(VideoMAE_Base, self).train(mode)
+        if self.freeze_norm and mode:
+            for name, m in self.named_modules():
+                if isinstance(m, (_BatchNorm, _InstanceNorm, GroupNorm, LayerNorm)):
+                    m.eval()
+                    m.weight.register_hook(lambda grad: torch.zeros_like(grad))
+                    m.bias.register_hook(lambda grad: torch.zeros_like(grad))
 
 
 def custom_forward(self, pixel_values, bool_masked_pos):

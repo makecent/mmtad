@@ -2,11 +2,11 @@
 dataset_type = 'THUMOS14Dataset'
 data_root = 'my_data/thumos14/'
 
-frame_interval = 5
+frame_interval = 10
 window_size = 960
 window_stride_train = 720  # overlap=0.75
 window_stride_test = 720  # overlap=0.25
-num_clips = 12        # 192/12=16 frame per clip
+# num_clips = 12        # 192/12=16 frame per clip
 # window_size = 480
 # window_stride_train = 360  # overlap=0.75
 # window_stride_test = 360  # overlap=0.25
@@ -25,7 +25,7 @@ train_pipeline = [
     # dict(type='mmaction.RandomCrop', size=img_shape[0]),
     dict(type='mmaction.Flip', flip_ratio=0.5),
     dict(type='Pad3D', size=(window_size//frame_interval, *img_shape)),
-    dict(type='TemporalSegment', num_clips=num_clips),
+    # dict(type='TemporalSegment', num_clips=num_clips),
     dict(type='mmaction.FormatShape', input_format='NCTHW'),
     dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
@@ -39,7 +39,7 @@ test_pipeline = [
     # dict(type='mmaction.Resize', scale=(128, -1), keep_ratio=True),
     # dict(type='mmaction.CenterCrop', crop_size=img_shape_test),
     dict(type='Pad3D', size=(window_size//frame_interval, *img_shape_test)),
-    dict(type='TemporalSegment', num_clips=num_clips),
+    # dict(type='TemporalSegment', num_clips=num_clips),
     dict(type='mmaction.FormatShape', input_format='NCTHW'),
     dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',

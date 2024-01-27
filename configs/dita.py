@@ -10,8 +10,8 @@ custom_imports = dict(imports=['my_modules'], allow_failed_imports=False)
 # 5. Use memory fusion
 enc_layers = 4
 dec_layers = 4
-dim_feat = 2048
-# dim_feat = 768
+# dim_feat = 2048
+dim_feat = 768
 dim_feedforward = 1024
 dropout = 0.1
 
@@ -34,11 +34,11 @@ model = dict(
         mean=[123.675, 116.28, 103.53],
         std=[58.395, 57.12, 57.375],
         format_shape='NCTHW'),
-    backbone=dict(type='SlowOnly',
-                  out_indices=(4,),
-                  freeze_bn=True,
-                  freeze_bn_affine=True),
-    # backbone=dict(type='VideoMAE_Base'),
+    # backbone=dict(type='SlowOnly',
+    #               out_indices=(4,),
+    #               freeze_bn=True,
+    #               freeze_bn_affine=True),
+    backbone=dict(type='VideoMAE_Base'),
     neck=[
         dict(
             type='TemporalDownSampler',
