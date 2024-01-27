@@ -358,6 +358,34 @@ class PseudoFrameDecode(RawFrameDecode):
 
 
 @TRANSFORMS.register_module()
+class TemporalSegment(BaseTransform):
+
+    def __init__(self, num_clips=None, clip_len=None):
+        super().__init__()
+        self.num_clips = num_clips
+        self.clip_len = clip_len
+
+    def transform(self, results: Dict):
+        imgs = results['imgs']
+        num_imgs = len(imgs)
+        if self.num_clips is not None:
+            num_clips = self.num_clips
+            if self.clip_len is not None:
+                clip_len = self.clip_len
+                assert num_clips * clip_len == num_imgs
+            else:
+                clip_len = num_imgs // num_clips
+        else:
+            assert self.clip_len is not None
+            clip_len = self.clip_len
+            num_clips = num_imgs // clip_len
+
+        results['num_clips'] = num_clips
+        results['clip_len'] = clip_len
+        return results
+
+
+@TRANSFORMS.register_module()
 class Pad3D(BaseTransform):
     """Pad video frames.
 

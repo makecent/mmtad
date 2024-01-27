@@ -9,10 +9,11 @@ window_stride_test = 720  # overlap=0.25
 # window_stride_train = 360  # overlap=0.75
 # window_stride_test = 360  # overlap=0.25
 frame_interval = 5   # 960/5=192 frames per window
-img_shape = (112, 112)
-img_shape_test = (128, 128)
-# img_shape = (224, 224)
-# img_shape_test = (224, 224)
+num_clips = 12        # 192/12=16 frame per clip
+# img_shape = (112, 112)
+# img_shape_test = (128, 128)
+img_shape = (224, 224)
+img_shape_test = (224, 224)
 
 
 train_pipeline = [
@@ -23,6 +24,7 @@ train_pipeline = [
     # dict(type='mmaction.RandomCrop', size=img_shape[0]),
     dict(type='mmaction.Flip', flip_ratio=0.5),
     dict(type='Pad3D', size=(window_size//frame_interval, *img_shape)),
+    dict(type='TemporalSegment', num_clips=num_clips),
     dict(type='mmaction.FormatShape', input_format='NCTHW'),
     dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
@@ -36,6 +38,7 @@ test_pipeline = [
     # dict(type='mmaction.Resize', scale=(128, -1), keep_ratio=True),
     # dict(type='mmaction.CenterCrop', crop_size=img_shape_test),
     dict(type='Pad3D', size=(window_size//frame_interval, *img_shape_test)),
+    dict(type='TemporalSegment', num_clips=num_clips),
     dict(type='mmaction.FormatShape', input_format='NCTHW'),
     dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',

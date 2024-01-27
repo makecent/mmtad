@@ -6,19 +6,13 @@ from einops import rearrange
 from mmdet.registry import MODELS
 
 
-def crops_to_batch(forward_methods):
-    def wrapper(self, inputs, *args, **kwargs):
-        # inputs: (N, M, C, T, H, W) or (N, C, T, H, W)
-        if inputs.ndim == 6:
-            num_crops = inputs.shape[1]
-            inputs = inputs.view(-1, *inputs.shape[2:])
-        return forward_methods(self, inputs, *args, **kwargs)
-
-    return wrapper
-
-
 @MODELS.register_module()
 class VideoMAE_Base(nn.Module):
+    """
+    The VideoMAE model from https://arxiv.org/abs/2203.12602.
+    The pre-training image size is (16x224x224), the frame interval is 2 and 4 for SSV2 and Kinetics, respectively.
+    The patch size is 2x16x16.
+    """
 
     def __init__(self):
         super(VideoMAE_Base, self).__init__()
@@ -33,15 +27,21 @@ class VideoMAE_Base(nn.Module):
 
         self.vision_model = model
 
-    @crops_to_batch
     def forward(self, x):
-        n, _, t, _, _ = x.shape
-        # x: (N, C, T, H, W) -> (NxT, C, H, W)
-        x = rearrange(x, 'n c t h w -> n t c h w')
-        outs = self.vision_model(x).last_hidden_state
-        # outs: (N, T'xL, C') -> (N, C', T', L, 1) mimic the NCTHW T'=T/2, L=H'*W'
-        outs = rearrange(outs, 'n (t l) c -> n c t l 1', n=n, t=t // 2)
-        return outs
+        # The inputs should be (N, M, C, T, H, W), N is the batch size and M = num_crops x num_clips.
+        n, m, c, t, h, w = x.shape
+        num_crops = 1  # TODO: compatible with dynamic num_crops, e.g. num_crops=3 when ThreeCrop as test augmentation
+        num_clips = m // num_crops
+        # x: (N, M, C, T, H, W) -> (NxM, T, C, H, W)
+        x = rearrange(x, 'n m c t h w -> (n m) t c h w')
+        x = self.vision_model(x).last_hidden_state
+        # x: (NxM, T'xH'xW', C') -> (NxM, C', T', H', W')  T'=T/2, H'=H/16, W'=W/16
+        x = rearrange(x, '(n m) (t h w) c -> (n m) c t h w', n=n, m=m, t=t // 2, h=(h // 16), w=(w // 16))
+        if num_clips > 1:
+            # x: (NxM, C', T', H', W') -> (N x num_crops, C', num_clips x T', H', W')
+            x = rearrange(x, '(n crops clips) c t h w -> (n crops) c (clips t) h w',
+                          n=n, crops=num_crops, clips=num_clips)
+        return x
 
 
 def custom_forward(self, pixel_values, bool_masked_pos):
