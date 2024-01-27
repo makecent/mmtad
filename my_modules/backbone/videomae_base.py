@@ -18,7 +18,7 @@ class VideoMAE_Base(nn.Module):
         super(VideoMAE_Base, self).__init__()
         from transformers import VideoMAEModel
         model = VideoMAEModel.from_pretrained("MCG-NJU/videomae-base-finetuned-kinetics")
-        pe = get_sinusoid_encoding_table(model.embeddings.config.hidden_size, max_len=5000)
+        pe = get_sinusoid_encoding_table(model.embeddings.config.hidden_size, max_len=10000)
         delattr(model.embeddings, "position_embeddings")
         model.embeddings.register_buffer("position_embeddings", pe, persistent=True)
         model.embeddings.forward = custom_forward.__get__(model.embeddings, model.embeddings.__class__)

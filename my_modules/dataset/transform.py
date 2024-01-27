@@ -270,7 +270,7 @@ class PackTADInputs(BaseTransform):
         else:
             assert 'imgs' in results
             results.update({'img': results.pop('imgs')})
-            results.update({'img_shape': (1, results['img'].shape[2])})
+            results.update({'img_shape': (1, results['img'].shape[2] * results['num_clips'])})
             results.update({'ori_shape': (1, results.pop('valid_len'))})
 
         results['img_path'] = ''
