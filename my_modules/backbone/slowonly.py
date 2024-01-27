@@ -6,7 +6,11 @@ from mmdet.registry import MODELS
 
 @MODELS.register_module()
 class SlowOnly(nn.Module):
-
+    """
+    The SlowFast model (The Slow part only) from https://arxiv.org/abs/1812.03982.
+    The pre-training image size is (4x224x224), the frame interval is 16. Pre-trained on Kinetics-400.
+    The output feature dimension is 4x7x7x2048.
+    """
     def __init__(self,
                  out_indices=(4,),
                  freeze_bn=True,
