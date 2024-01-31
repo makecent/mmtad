@@ -1,4 +1,4 @@
-# adapted from basicTAD
+import os.path as osp
 import re
 import warnings
 from copy import deepcopy
@@ -9,9 +9,8 @@ import numpy as np
 from mmdet.datasets import BaseDetDataset
 from mmdet.registry import DATASETS
 from mmengine import print_log, MMLogger
-import os.path as osp
 
-from my_modules.dataset.transform import SlidingWindow
+from my_modules.dataset.transform import RandomSlice
 
 
 def make_regex_pattern(fixed_pattern):
@@ -34,11 +33,10 @@ class THUMOS14Dataset(BaseDetDataset):
 
     def __init__(self,
                  window_size,
-                 frame_interval,
+                 frame_interval=None,
                  window_stride=None,
                  skip_short=False,  # skip too short annotations
                  skip_wrong=False,  # skip videos that are wrong annotated
-                 fix_slice=True,
                  tad_style=True,
                  # whether slice the feature to windows in advance with fixed stride, or slice randomly.
                  iof_thr=0.75,  # The Intersection over Foreground (IoF) threshold used to filter sliding windows.
@@ -51,7 +49,6 @@ class THUMOS14Dataset(BaseDetDataset):
         self.window_stride = window_stride
         self.skip_short = skip_short
         self.skip_wrong = skip_wrong
-        self.fix_slice = fix_slice
         self.tad_style = tad_style
         self.iof_thr = iof_thr
         self.start_index = start_index
@@ -91,13 +88,11 @@ class THUMOS14Dataset(BaseDetDataset):
                              frame_dir=osp.join(self.data_prefix['frames'], video_name),
                              duration=float(video_info['duration']),
                              fps=fps,
-                             frame_interval=self.frame_interval,
                              segments=segments,
                              labels=labels,
                              gt_ignore_flags=ignore_flags)
 
-            if not self.fix_slice:  # slice randomly
-                assert isinstance(self.pipeline.transforms[0], SlidingWindow)
+            if self.window_stride is None:
                 data_info.update(dict(total_frames=total_frames))
                 data_list.append(data_info)
             else:
@@ -125,20 +120,21 @@ class THUMOS14Dataset(BaseDetDataset):
 
                 for start_idx, end_idx in zip(start_indices, end_indices):
                     data_info.update(dict(
-                        window_offset=start_idx,
+                        frame_interval=self.frame_interval,
+                        window_offset=start_idx / fps,
                         valid_len=end_idx - start_idx,
                         frame_inds=np.arange(start_idx, end_idx, self.frame_interval)))
                     assert start_idx < end_idx <= total_frames, f"invalid {start_idx, end_idx, total_frames}"
+
                     if self.test_mode:
                         data_info.update(dict(overlap=overlapped_regions))
                     else:
                         # During the training, windows have low action footage are skipped
                         # Also known as Integrity-based instance filtering (IBIF)
-                        valid_mask = SlidingWindow.get_valid_mask(segments_f,
-                                                                  np.array([[start_idx, end_idx]],
-                                                                           dtype=np.float32),
-                                                                  iof_thr=self.iof_thr,
-                                                                  ignore_flags=ignore_flags)
+                        valid_mask = RandomSlice.get_valid_mask(segments_f,
+                                                                np.array([[start_idx, end_idx]], dtype=np.float32),
+                                                                iof_thr=self.iof_thr,
+                                                                ignore_flags=ignore_flags)
                         if not valid_mask.any():
                             continue
                         # Convert the segment annotations to be relative to the feature window
@@ -194,7 +190,8 @@ class THUMOS14Dataset(BaseDetDataset):
         data_info['start_index'] = self.start_index
         data_info['modality'] = self.modality
         data_info['filename_tmpl'] = self.filename_tmpl
-        data_info['num_clips'] = 1   # just for compatible with mmaction2
-        data_info['clip_len'] = self.window_size // self.frame_interval
+        data_info['num_clips'] = 1  # just for compatible with mmaction2
+        if self.window_stride is not None:
+            data_info['clip_len'] = self.window_size // self.frame_interval
 
         return data_info
