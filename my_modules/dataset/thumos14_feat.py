@@ -76,7 +76,7 @@ class Thumos14FeatDataset(BaseDetDataset):
                              gt_ignore_flags=ignore_flags)
 
             if self.window_stride is None:
-                data_info.update(dict(feat_len=feat_len))
+                data_info.update(dict(feat_start=0, feat_len=feat_len))
                 if self.pre_load_feat:
                     data_info.update(dict(feat=feat))
                 data_list.append(data_info)
@@ -104,20 +104,13 @@ class Thumos14FeatDataset(BaseDetDataset):
 
                 for start_idx, end_idx in zip(start_indices, end_indices):
                     assert start_idx < end_idx <= feat_len, f"invalid {start_idx, end_idx, feat_len}"
-                    feat_window = feat[start_idx: end_idx]
-                    feat_win_len = len(feat_window)
+                    feat_win_len = end_idx - start_idx
                     data_info.update(dict(window_offset=start_idx * self.feat_stride / data_info['fps'],
-                                          feat_len=feat_win_len))  # before padding for computing the valid feature mask
+                                          feat_start=start_idx,
+                                          feat_len=feat_win_len))  # it may smaller than window_size
                     if self.pre_load_feat:
-                        # Padding windows that are shorter than the target window size.
-                        if feat_win_len < self.window_size:
-                            feat_window = np.pad(feat_window,
-                                                 ((0, self.window_size - feat_win_len), (0, 0)),
-                                                 constant_values=0)
+                        feat_window = feat[start_idx: end_idx]
                         data_info.update(dict(feat=feat_window))
-                    else:
-                        assert isinstance(self.pipeline.transforms[0], RandomSlice)
-                        data_info.update(dict(feat_start=start_idx))
 
                     if self.test_mode:
                         data_info.update(dict(overlap=overlapped_regions))

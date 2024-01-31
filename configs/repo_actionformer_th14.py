@@ -76,6 +76,7 @@ data_root = 'my_data/thumos14/'
 
 train_pipeline = [
     dict(type='RandomSlice', window_size=max_seq_len, iof_thr=0.5),
+    dict(type='LoadFeature'),
     dict(type='PadFeature', pad_length=max_seq_len),
     dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
@@ -83,6 +84,7 @@ train_pipeline = [
                     'fps', 'feat_stride'))
 ]
 test_pipeline = [
+    dict(type='LoadFeature'),
     dict(type='PadFeature', pad_length=max_seq_len, pad_length_divisor=32 * (19 // 2) * 2),
     dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',

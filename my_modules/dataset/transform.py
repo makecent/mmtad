@@ -124,9 +124,12 @@ def segment_overlaps(segments1,
 class LoadFeature(BaseTransform):
     def transform(self,
                   results: Dict) -> Optional[Union[Dict, Tuple[List, List]]]:
-        feat_start, feat_len, feat_path = results['feat_start'], results['feat_len'], results['feat_path']
-        feat = np.load(feat_path)[feat_start: feat_start + feat_len]
-        results['feat'] = feat
+        if 'feat' in results:
+            feat = results['feat']
+        else:
+            feat = np.load(results['feat_path'])
+        feat_start, feat_len = results['feat_start'], results['feat_len']
+        results['feat'] = feat[feat_start: feat_start + feat_len]
 
         return results
 
