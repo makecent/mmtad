@@ -16,11 +16,11 @@ class VideoMAE_Base(nn.Module):
     The patch size is 2x16x16.
     """
 
-    def __init__(self, freeze_norm=True):
+    def __init__(self, freeze_norm=False, freeze=False):
         super(VideoMAE_Base, self).__init__()
         from transformers import VideoMAEModel
         model = VideoMAEModel.from_pretrained("MCG-NJU/videomae-base-finetuned-kinetics")
-        pe = get_sinusoid_encoding_table(model.embeddings.config.hidden_size, max_len=10000)
+        pe = get_sinusoid_encoding_table(model.embeddings.config.hidden_size, max_len=5000)
         delattr(model.embeddings, "position_embeddings")
         model.embeddings.register_buffer("position_embeddings", pe, persistent=True)
         model.embeddings.forward = custom_forward.__get__(model.embeddings, model.embeddings.__class__)
@@ -29,6 +29,10 @@ class VideoMAE_Base(nn.Module):
 
         self.vision_model = model
         self.freeze_norm = freeze_norm
+        self.freeze = freeze
+        if self.freeze:
+            for param in model.parameters():
+                param.requires_grad = False
 
     def forward(self, x):
         # The inputs should be (N, M, C, T, H, W), N is the batch size and M = num_crops x num_clips.
@@ -52,8 +56,9 @@ class VideoMAE_Base(nn.Module):
             for name, m in self.named_modules():
                 if isinstance(m, (_BatchNorm, _InstanceNorm, GroupNorm, LayerNorm)):
                     m.eval()
-                    m.weight.register_hook(lambda grad: torch.zeros_like(grad))
-                    m.bias.register_hook(lambda grad: torch.zeros_like(grad))
+                    if m.weights.requires_grad:
+                        m.weight.register_hook(lambda grad: torch.zeros_like(grad))
+                        m.bias.register_hook(lambda grad: torch.zeros_like(grad))
 
 
 def custom_forward(self, pixel_values, bool_masked_pos):

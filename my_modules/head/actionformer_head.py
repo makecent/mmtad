@@ -191,8 +191,8 @@ class ActionFormerHead(AnchorFreeHead):
         loss_cls = valid_loss.sum() + invalid_loss.sum() * 0
 
         # %% normalize the losses with the number of positive samples (maintained in EMA-style)
-        loss_cls /= self.loss_normalizer
-        loss_bbox /= self.loss_normalizer
+        losses['loss_cls'] = loss_cls / self.loss_normalizer
+        losses['loss_bbox'] = loss_bbox.sum() / self.loss_normalizer
         return losses
 
     def loss_by_feat(self,

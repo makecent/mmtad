@@ -10,8 +10,8 @@ custom_imports = dict(imports=['my_modules'], allow_failed_imports=False)
 # 5. Use memory fusion
 enc_layers = 4
 dec_layers = 4
-# dim_feat = 2048
-dim_feat = 768
+dim_feat = 2048
+# dim_feat = 768
 dim_feedforward = 1024
 dropout = 0.1
 
@@ -34,11 +34,12 @@ model = dict(
         mean=[123.675, 116.28, 103.53],
         std=[58.395, 57.12, 57.375],
         format_shape='NCTHW'),
-    # backbone=dict(type='SlowOnly',
-    #               out_indices=(4,),
-    #               freeze_bn=True,
-    #               freeze_bn_affine=True),
-    backbone=dict(type='VideoMAE_Base'),
+    backbone=dict(type='SlowOnly',
+                  out_indices=(4,),
+                  freeze=False,
+                  freeze_bn=True,
+                  freeze_bn_affine=True),
+    # backbone=dict(type='VideoMAE_Base', freeze=True),
     neck=[
         dict(
             type='TemporalDownSampler',
@@ -174,4 +175,5 @@ val_evaluator = dict(
     nms_in_overlap=False,  # True for TadTR
     nms_cfg=dict(type='nms', iou_thr=0.6))  # 0.4 for TadTR
 test_evaluator = val_evaluator
+efficient_conv_bn_eval = ['backbone']
 # efficient_conv_bn_eval = "[backbone]"

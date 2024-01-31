@@ -2,30 +2,30 @@
 dataset_type = 'THUMOS14Dataset'
 data_root = 'my_data/thumos14/'
 
-frame_interval = 5
+frame_interval = 8
 window_size = 960
 window_stride_train = 720  # overlap=0.75
 window_stride_test = 720  # overlap=0.25
-# num_clips = 12        # 192/12=16 frame per clip
+num_clips = 15        # 192/12=16 frame per clip
 # window_size = 480
 # window_stride_train = 360  # overlap=0.75
 # window_stride_test = 360  # overlap=0.25
 # num_clips = 6        # 96/6=16 frame per clip
-img_shape = (112, 112)
-img_shape_test = (128, 128)
-# img_shape = (224, 224)
-# img_shape_test = (224, 224)
+# img_shape = (112, 112)
+# img_shape_test = (128, 128)
+img_shape = (224, 224)
+img_shape_test = (224, 224)
 
 
 train_pipeline = [
-    dict(type='PseudoFrameDecode'),
-    # dict(type='mmaction.RawFrameDecode'),
+    # dict(type='PseudoFrameDecode'),
+    dict(type='mmaction.RawFrameDecode'),
     dict(type='mmaction.Resize', scale=img_shape, keep_ratio=False),
     # dict(type='mmaction.Resize', scale=(128, -1), keep_ratio=True), # scale images' short-side to 128, keep aspect ratio
     # dict(type='mmaction.RandomCrop', size=img_shape[0]),
     dict(type='mmaction.Flip', flip_ratio=0.5),
     dict(type='Pad3D', size=(window_size//frame_interval, *img_shape)),
-    # dict(type='TemporalSegment', num_clips=num_clips),
+    dict(type='TemporalSegment', num_clips=num_clips),
     dict(type='mmaction.FormatShape', input_format='NCTHW'),
     dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
@@ -33,13 +33,13 @@ train_pipeline = [
                     'fps', 'frame_interval', 'window_offset'))
 ]
 test_pipeline = [
-    dict(type='PseudoFrameDecode'),
-    # dict(type='mmaction.RawFrameDecode'),
+    # dict(type='PseudoFrameDecode'),
+    dict(type='mmaction.RawFrameDecode'),
     dict(type='mmaction.Resize', scale=img_shape_test, keep_ratio=False),
     # dict(type='mmaction.Resize', scale=(128, -1), keep_ratio=True),
     # dict(type='mmaction.CenterCrop', crop_size=img_shape_test),
     dict(type='Pad3D', size=(window_size//frame_interval, *img_shape_test)),
-    # dict(type='TemporalSegment', num_clips=num_clips),
+    dict(type='TemporalSegment', num_clips=num_clips),
     dict(type='mmaction.FormatShape', input_format='NCTHW'),
     dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
@@ -55,6 +55,7 @@ train_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file='annotations/louis/thumos14_val.json',
+        fix_slice=True,
         window_size=window_size,
         window_stride=window_stride_train,
         frame_interval=frame_interval,
@@ -83,10 +84,3 @@ val_dataloader = dict(
         test_mode=True,
         pipeline=test_pipeline))
 test_dataloader = val_dataloader
-
-val_evaluator = dict(
-    type='TH14Metric',
-    metric='mAP',
-    iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
-    nms_cfg=dict(type='nms', iou_thr=0.4))
-test_evaluator = val_evaluator

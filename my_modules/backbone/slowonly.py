@@ -3,6 +3,8 @@ import torch.nn as nn
 from einops import rearrange
 from mmdet.registry import MODELS
 
+torch.fx.wrap('rearrange')
+
 
 @MODELS.register_module()
 class SlowOnly(nn.Module):
@@ -11,10 +13,12 @@ class SlowOnly(nn.Module):
     The pre-training image size is (4x224x224), the frame interval is 16. Pre-trained on Kinetics-400.
     The output feature dimension is 4x7x7x2048.
     """
+
     def __init__(self,
                  out_indices=(4,),
                  freeze_bn=True,
-                 freeze_bn_affine=True
+                 freeze_bn_affine=True,
+                 freeze=False,
                  ):
         super(SlowOnly, self).__init__()
         model = torch.hub.load("facebookresearch/pytorchvideo", model='slow_r50', pretrained=True)
@@ -22,6 +26,17 @@ class SlowOnly(nn.Module):
         self.out_indices = out_indices
         self._freeze_bn = freeze_bn
         self._freeze_bn_affine = freeze_bn_affine
+        self._freeze = freeze
+        if freeze:
+            # Freeze all parameters
+            for param in model.parameters():
+                param.requires_grad = False
+        elif freeze_bn_affine:
+            # Freeze only normalization layers
+            for module in model.modules():
+                if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
+                    for param in module.parameters():
+                        param.requires_grad = False
 
     def forward(self, x):
         # The inputs should be (N, M, C, T, H, W), N is the batch size and M = num_crops x num_clips.
@@ -35,12 +50,9 @@ class SlowOnly(nn.Module):
         for i, block in enumerate(self.blocks):
             x = block(x)
             if i in self.out_indices:
-                if num_clips > 1:
-                    # x: (NxM, C', T', H', W') -> (N x num_crops, C', num_clips x T', H', W')
-                    x_ = rearrange(x, '(n crops clips) c t h w -> (n crops) c (clips t) h w',
-                                   n=n, crops=num_crops, clips=num_clips)
-                else:
-                    x_ = x
+                # x: (NxM, C', T', H', W') -> (N x num_crops, C', num_clips x T', H', W')
+                x_ = rearrange(x, '(n crops clips) c t h w -> (n crops) c (clips t) h w',
+                               n=n, crops=num_crops, clips=num_clips)
                 outs.append(x_)
         if len(outs) == 1:
             return outs[0]
@@ -52,9 +64,6 @@ class SlowOnly(nn.Module):
             for name, m in self.named_modules():
                 if isinstance(m, (nn.BatchNorm3d, nn.BatchNorm2d, nn.BatchNorm1d)):
                     m.eval()
-                    if self._freeze_bn_affine:
-                        m.weight.register_hook(lambda grad: torch.zeros_like(grad))
-                        m.bias.register_hook(lambda grad: torch.zeros_like(grad))
 
 # from fvcore.nn import FlopCountAnalysis, flop_count_table
 # from torch.profiler import profile, ProfilerActivity, record_function
