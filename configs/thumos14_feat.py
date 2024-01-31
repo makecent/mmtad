@@ -3,14 +3,13 @@ dataset_type = 'Thumos14FeatDataset'
 data_root = 'my_data/thumos14/'
 
 train_pipeline = [
-    # dict(type='SlidingWindow', window_size=128, iof_thr=0.75),
-    dict(type='PackDetInputs',
+    dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
                     'scale_factor', 'flip', 'flip_direction',
                     'fps', 'feat_stride', 'window_offset'))
 ]
 test_pipeline = [
-    dict(type='PackDetInputs',
+    dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
                     'scale_factor', 'flip', 'flip_direction',
                     'fps', 'feat_stride', 'window_offset', 'overlap'))
@@ -25,7 +24,6 @@ train_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file='annotations/louis/thumos14_val.json',
-        fix_slice=True,
         feat_stride=8,
         window_size=128,
         window_stride=32,  # overlap=0.75
@@ -45,7 +43,6 @@ val_dataloader = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file='annotations/louis/thumos14_test.json',
-        fix_slice=True,
         feat_stride=8,
         window_size=128,
         window_stride=96,  # overlap=0.25
@@ -55,10 +52,3 @@ val_dataloader = dict(
         test_mode=True,
         pipeline=test_pipeline))
 test_dataloader = val_dataloader
-
-val_evaluator = dict(
-    type='TH14Metric',
-    metric='mAP',
-    iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
-    nms_cfg=dict(type='nms', iou_thr=0.4))  # 0.4 for TadTR
-test_evaluator = val_evaluator

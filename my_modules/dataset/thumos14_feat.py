@@ -8,16 +8,12 @@ from mmdet.datasets import BaseDetDataset
 from mmdet.registry import DATASETS
 from mmengine import print_log, MMLogger
 
-from my_modules.dataset.transform import SlidingWindow
+from my_modules.dataset.transform import RandomSlice
 
 
 @DATASETS.register_module()
 class Thumos14FeatDataset(BaseDetDataset):
-    """Thumos14 dataset for temporal action detection.
-    fix_slice=False, on_the_fly=True:   Randomly slice a feature window from the video feature on the fly.
-    fix_slice=True, on_the_fly=False:   Slice the feature windows with fixed stride. All feat windows are pre-loaded (Fast but high memory).
-    fix_slice=True, on_the_fly=True:    Slice the feature windows with fixed stride. Feat windows are loaded as needed.
-    fix_slice=False, on_the_fly=False:  Not applicable. Dataset of different epoch should have different random slices.
+    """Thumos14 dataset for temporal action detection using pre-extracted features.
     """
 
     metainfo = dict(classes=('BaseballPitch', 'BasketballDunk', 'Billiards', 'CleanAndJerk',
@@ -30,26 +26,24 @@ class Thumos14FeatDataset(BaseDetDataset):
                  feat_stride,  # feature are extracted every n frames
                  skip_short=False,  # skip too short annotations
                  skip_wrong=False,  # skip videos that are wrong annotated
-                 fix_slice=True,
-                 # whether slice the feature to windows in advance with fixed stride, or slice randomly.
-                 on_the_fly=False,  # whether slice the feature on the fly and pre-slice.
-                 tadtr_style=True,  # whether slice the feature in a TadTR style.
-                 iof_thr=0.75,  # The Intersection over Foreground (IoF) threshold used to filter sliding windows.
-                 window_size=None,  # the window size of sliding window.
-                 window_stride=None,  # the window stride of sliding window.
+                 pre_load_feat: bool = False,  # whether pre-load all the features/feature windows to cpu memory
+                 tadtr_style: bool = True,  # whether slice the feature in a TadTR style.
+                 iof_thr: float = 0.75,  # The Intersection over Foreground (IoF) threshold used to filter sliding windows.
+                 window_size: int = None,  # the window size of sliding window.
+                 window_stride: int = None,  # the window stride of sliding window.
                  **kwargs):
         self.feat_stride = feat_stride
         self.skip_short = skip_short
         self.skip_wrong = skip_wrong
-        self.fix_slice = fix_slice
-        self.on_the_fly = on_the_fly
+        self.pre_load_feat = pre_load_feat
         self.tadtr_style = tadtr_style
         self.iof_thr = iof_thr
         self.window_size = window_size
         self.window_stride = window_stride
-        if fix_slice:
-            assert isinstance(window_size, int)
-            assert isinstance(window_stride, int)
+        if window_stride is not None and pre_load_feat:
+            warnings.warn("window_stride is not None and pre_load_feat is True, which is not recommended."
+                          "As there could be many overlapped windows produced, pre-load features of all these windows"
+                          " to cpu will occupy significant cpu memory")
         super(Thumos14FeatDataset, self).__init__(**kwargs)
 
     def load_data_list(self):
@@ -61,6 +55,7 @@ class Thumos14FeatDataset(BaseDetDataset):
                 continue
             # Parsing ground truth
             segments, labels, ignore_flags = self.parse_labels(video_name, video_info)
+            segments_f = segments * video_info['FPS'] / self.feat_stride  # segment annotations based on feature-unit
 
             # Loading features
             feat_path = osp.join(self.data_prefix['feat'], video_name) + '.npy'
@@ -72,6 +67,7 @@ class Thumos14FeatDataset(BaseDetDataset):
             feat_len = len(feat)
 
             data_info = dict(video_name=video_name,
+                             feat_path=feat_path,
                              duration=float(video_info['duration']),
                              fps=float(video_info['FPS']),
                              feat_stride=self.feat_stride,
@@ -79,13 +75,15 @@ class Thumos14FeatDataset(BaseDetDataset):
                              labels=labels,
                              gt_ignore_flags=ignore_flags)
 
-            if not self.fix_slice and self.on_the_fly:  # slice randomly
-                assert isinstance(self.pipeline.transforms[0], SlidingWindow)
-                data_info.update(dict(feat=feat, feat_len=feat_len))
+            if self.window_stride is None:
+                data_info.update(dict(feat_len=feat_len))
+                if self.pre_load_feat:
+                    data_info.update(dict(feat=feat))
                 data_list.append(data_info)
             else:
                 # Perform fixed-stride sliding window
                 if self.tadtr_style:
+                    assert self.window_stride <= self.window_size
                     # TadTR handles all the complete windows, and if applicable, plus one tail window that covers the remaining content
                     num_complete_windows = max(0, feat_len - self.window_size) // self.window_stride + 1
                     # feat_windows = feat_windows[:num_complete_windows]
@@ -108,54 +106,41 @@ class Thumos14FeatDataset(BaseDetDataset):
                     assert start_idx < end_idx <= feat_len, f"invalid {start_idx, end_idx, feat_len}"
                     feat_window = feat[start_idx: end_idx]
                     feat_win_len = len(feat_window)
-
-                    # Padding windows that are shorter than the target window size.
-                    if feat_win_len < self.window_size:
-                        feat_window = np.pad(feat_window,
-                                             ((0, self.window_size - feat_win_len), (0, 0)),
-                                             constant_values=0)
-                    data_info.update(dict(window_offset=start_idx,
+                    data_info.update(dict(window_offset=start_idx * self.feat_stride / data_info['fps'],
                                           feat_len=feat_win_len))  # before padding for computing the valid feature mask
-                    if self.on_the_fly:
-                        assert isinstance(self.pipeline.transforms[0], SlidingWindow)
-                        data_info.update(dict(feat_path=feat_path))
-                    else:
+                    if self.pre_load_feat:
+                        # Padding windows that are shorter than the target window size.
+                        if feat_win_len < self.window_size:
+                            feat_window = np.pad(feat_window,
+                                                 ((0, self.window_size - feat_win_len), (0, 0)),
+                                                 constant_values=0)
                         data_info.update(dict(feat=feat_window))
+                    else:
+                        assert isinstance(self.pipeline.transforms[0], RandomSlice)
+                        data_info.update(dict(feat_start=start_idx))
 
-                    # Convert the format of segment annotations from second-unit to feature-unit.
-                    segments_f = segments * data_info['fps'] / self.feat_stride
                     if self.test_mode:
                         data_info.update(dict(overlap=overlapped_regions))
                     else:
                         # During the training, windows has no segment annotated are skipped
                         # Also known as Integrity-based instance filtering (IBIF)
-                        valid_mask = SlidingWindow.get_valid_mask(segments_f,
-                                                                  np.array([[start_idx, end_idx]], dtype=np.float32),
-                                                                  iof_thr=self.iof_thr,
-                                                                  ignore_flags=ignore_flags)
+                        valid_mask = RandomSlice.get_valid_mask(segments_f,
+                                                                np.array([[start_idx, end_idx]], dtype=np.float32),
+                                                                iof_thr=self.iof_thr,
+                                                                ignore_flags=ignore_flags)
                         if not valid_mask.any():
                             continue
                         # Convert the segment annotations to be relative to the feature window
-                        segments_f = segments_f[valid_mask].clip(min=start_idx, max=end_idx) - start_idx
-                        labels_f = labels[valid_mask]
-                        ignore_flags_f = ignore_flags[valid_mask]
-                        data_info.update(dict(segments=segments_f,
-                                              labels=labels_f,
-                                              gt_ignore_flags=ignore_flags_f))
+                        _segments_f = segments_f[valid_mask].clip(min=start_idx, max=end_idx) - start_idx
+                        _labels = labels[valid_mask]
+                        _ignore_flags = ignore_flags[valid_mask]
+                        data_info.update(dict(segments=_segments_f,
+                                              labels=_labels,
+                                              gt_ignore_flags=_ignore_flags))
 
                     data_list.append(deepcopy(data_info))
+        assert len(data_list) > 0
         print_log(f"number of feature windows:\t {len(data_list)}", logger=MMLogger.get_current_instance())
-        # if self.test_mode:
-        #     segments = []
-        #     for i in data_list:
-        #         segments.append(i['segments'][:, 1] - i['segments'][:, 0])
-        #
-        #     seg_len = np.concatenate(segments)
-        #     from mmengine import dump
-        #     dump(seg_len, 'test_seg_len.pkl')
-        # else:
-        #     pass
-        #     # dump(seg_len, 'train_seg_len.pkl')
         return data_list
 
     def parse_labels(self, video_name, video_info):

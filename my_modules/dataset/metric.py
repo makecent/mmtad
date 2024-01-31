@@ -4,27 +4,35 @@ from typing import Sequence
 
 import numpy as np
 import torch
+from mmcv.ops import batched_nms
 from mmdet.evaluation.functional import eval_map, eval_recalls
 from mmdet.evaluation.metrics import VOCMetric
 from mmdet.registry import METRICS
 from mmdet.structures.bbox import bbox_overlaps
 from mmengine.logging import MMLogger
 from mmengine.structures import InstanceData
-from mmcv.ops import batched_nms
 
 
 @METRICS.register_module()
 class TH14Metric(VOCMetric):
+    """
+    We could segment a test video to sub-videos (windows that may overlap) for computation/memory convenience.
+    In this case, we need merge detection results of sub-videos of the same video.
+    We typically perform NMS after merging as these windows may overlap.
+    If you did not segment the video, just skip the merging and NMS and perform NMS in detection head.
+    """
 
     def __init__(self,
-                 nms_cfg=dict(type='nms', iou_thr=0.4),
-                 max_per_video: int = False,
+                 merge_windows: bool = False,
+                 nms_cfg=None,
+                 max_per_video: int = -1,
                  score_thr=0.0,
                  duration_thr=0.0,
                  nms_in_overlap=False,
                  eval_mode: str = 'area',
                  **kwargs):
         super().__init__(eval_mode=eval_mode, **kwargs)
+        self.merge_windows = merge_windows
         self.nms_cfg = nms_cfg
         self.max_per_video = max_per_video
         self.score_thr = score_thr
@@ -47,7 +55,7 @@ class TH14Metric(VOCMetric):
             gts, dets, gts_ignore = data['gt_instances'], data['pred_instances'], data['ignored_instances']
             ann = dict(
                 video_name=data['img_id'],  # for the purpose of future grouping detections of same video.
-                overlap=data['overlap'],  # for the purpose of NMS on overlapped region in testing videos
+                overlap=data.get('overlap', np.empty((0, 2))),  # for the purpose of NMS on overlapped region
                 labels=gts['labels'].cpu().numpy(),
                 bboxes=gts['bboxes'].cpu().numpy(),
                 bboxes_ignore=gts_ignore.get('bboxes', torch.empty((0, 4))).cpu().numpy(),
@@ -58,11 +66,12 @@ class TH14Metric(VOCMetric):
             # 2. Multiply the frame intervals between adjacent data points so convert detection results to frame-unit.
             # 3. Multiply the FPS to convert detection results to second-unit.
             if 'feat_stride' in data:
-                # From feature unit to second-unit
-                dets['bboxes'] = (dets['bboxes'] + data['window_offset']) * data['feat_stride'] / data['fps']
+                dets['bboxes'] *= data['feat_stride']
             else:
-                # From frame unit to second-unit
-                dets['bboxes'] = (dets['bboxes'] * data['frame_interval'] + data['window_offset']) / data['fps']
+                dets['bboxes'] *= data['frame_interval']
+            dets['bboxes'] /= data['fps']
+            if 'window_offset' in data:
+                dets['bboxes'] += data['window_offset']
             # Set y1, y2 of predictions the fixed value.
             dets['bboxes'][:, 1] = 0.1
             dets['bboxes'][:, 3] = 0.9
@@ -94,15 +103,13 @@ class TH14Metric(VOCMetric):
         """
         logger: MMLogger = MMLogger.get_current_instance()
         gts, preds = zip(*results)
-
-        # Following the TadTR, we cropped temporally OVERLAPPED sub-videos from the test video
-        # to handle test video of long duration while keep a fine temporal granularity.
-        # In this case, we need perform non-maximum suppression (NMS) to remove redundant detections.
-        # This NMS, however, is NOT necessary when window stride >= window size, i.e., non-overlapped sliding window.
-        logger.info(f'\n Concatenating the testing results ...')
-        gts, preds = self.merge_results_of_same_video(gts, preds)
-        logger.info(f'\n Performing NMS ...')
-        preds = self.non_maximum_suppression(preds)
+        if self.merge_windows:
+            logger.info(f'\n Concatenating the testing results ...')
+            gts, preds = self.merge_results_of_same_video(gts, preds)
+        if self.nms_cfg is not None:
+            logger.info(f'\n Performing NMS ...')
+            preds = self.non_maximum_suppression(preds)
+        preds = self.prepare_for_eval(preds)
         eval_results = OrderedDict()
         if self.metric == 'mAP':
             assert isinstance(self.iou_thrs, list)
@@ -149,6 +156,7 @@ class TH14Metric(VOCMetric):
         # Also known as the Cross-Window Fusion (CWF)
         video_names = list(dict.fromkeys([gt['video_name'] for gt in gts]))
 
+        # list of dict to dict of list
         merged_gts_dict = dict()
         merged_preds_dict = dict()
         for this_gt, this_pred in zip(gts, preds):
@@ -204,16 +212,20 @@ class TH14Metric(VOCMetric):
             sort_idxs = pred_v.scores.argsort(descending=True)
             pred_v = pred_v[sort_idxs]
             # keep top-k predictions
-            if self.max_per_video:
+            if self.max_per_video > 0:
                 pred_v = pred_v[:self.max_per_video]
+            preds_nms.append(pred_v)
+        return preds_nms
 
-            # Reformat predictions to meet the requirement of eval_map function: VideoList[ClassList[PredictionArray]]
+    def prepare_for_eval(self, preds):
+        """Reformat predictions to meet the requirement of eval_map function: VideoList[ClassList[PredictionArray]]"""
+        out_preds = []
+        for pred_v in preds:
             dets = []
             for label in range(len(self.dataset_meta['classes'])):
                 index = np.where(pred_v.labels == label)[0]
                 pred_bbox_with_scores = np.hstack(
                     [pred_v[index].bboxes, pred_v[index].scores.reshape((-1, 1))])
                 dets.append(pred_bbox_with_scores)
-
-            preds_nms.append(dets)
-        return preds_nms
+            out_preds.append(dets)
+        return out_preds

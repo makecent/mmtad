@@ -106,8 +106,8 @@ model = dict(
             gamma=2.0,
             alpha=0.25,
             loss_weight=cls_loss_coef),
-        loss_bbox=dict(type='CustomL1Loss', loss_weight=seg_loss_coef),
-        loss_iou=dict(type='CustomGIoULoss', loss_weight=iou_loss_coef)),
+        loss_bbox=dict(type='L1Loss', loss_weight=seg_loss_coef),
+        loss_iou=dict(type='GIoU1dLoss', loss_weight=iou_loss_coef)),
     dn_cfg=dict(label_noise_scale=0.5, box_noise_scale=1.0,
                 group_cfg=dict(dynamic=True, num_groups=None, num_dn_queries=100)),
     # group_cfg=dict(dynamic=False, num_groups=5)),
@@ -116,8 +116,8 @@ model = dict(
             type='HungarianAssigner',
             match_costs=[
                 dict(type='FocalLossCost', weight=2.0),  # from 6.0 to 2.0
-                dict(type='CustomBBoxL1Cost', weight=5.0, box_format='xywh'),
-                dict(type='CustomIoUCost', iou_mode='giou', weight=2.0)])),  # from iou to giou
+                dict(type='BBox1dL1Cost', weight=5.0, box_format='xywh'),
+                dict(type='IoU1dCost', iou_mode='giou', weight=2.0)])),  # from iou to giou
     test_cfg=dict(max_per_img=200)  # from 100 to 200 since window size is scaled
 )
 
@@ -168,8 +168,10 @@ test_cfg = dict(type='TestLoop')
 
 val_evaluator = dict(
     type='TH14Metric',
+    merge_windows=True,
     metric='mAP',
     iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
     nms_in_overlap=False,  # True for TadTR
     nms_cfg=dict(type='nms', iou_thr=0.6))  # 0.4 for TadTR
 test_evaluator = val_evaluator
+# efficient_conv_bn_eval = "[backbone]"

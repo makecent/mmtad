@@ -76,16 +76,16 @@ model = dict(
             gamma=2.0,
             alpha=0.25,
             loss_weight=cls_loss_coef),
-        loss_bbox=dict(type='CustomL1Loss', loss_weight=seg_loss_coef),
-        loss_iou=dict(type='CustomIoULoss', mode='linear', loss_weight=iou_loss_coef)),  # -log(GIoU) for DeformableDETR
+        loss_bbox=dict(type='L1Loss', loss_weight=seg_loss_coef),
+        loss_iou=dict(type='IOU1dLoss', mode='linear', loss_weight=iou_loss_coef)),  # -log(GIoU) for DeformableDETR
     # training and testing settings
     train_cfg=dict(
         assigner=dict(
             type='HungarianAssigner',
             match_costs=[
                 dict(type='FocalLossCost', weight=6.0),  # 2.0 for DeformableDETR
-                dict(type='CustomBBoxL1Cost', weight=5.0, box_format='xywh'),
-                dict(type='CustomIoUCost', iou_mode='iou', weight=2.0)  # GIoU for DeformableDETR
+                dict(type='BBox1dL1Cost', weight=5.0, box_format='xywh'),
+                dict(type='IoU1dCost', iou_mode='iou', weight=2.0)  # GIoU for DeformableDETR
             ])),
     test_cfg=dict(max_per_img=max_per_img))
 
@@ -122,5 +122,12 @@ param_scheduler = [
         milestones=[14],  # 14 for TadTR
         gamma=0.1),
 ]
+val_evaluator = dict(
+    type='TH14Metric',
+    merge_windows=True,
+    metric='mAP',
+    iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
+    nms_cfg=dict(type='nms', iou_thr=0.4))  # 0.4 for TadTR
+test_evaluator = val_evaluator
 
 

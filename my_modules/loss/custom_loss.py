@@ -3,10 +3,10 @@ from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
-from mmdet.models.losses import L1Loss, GIoULoss, IoULoss, FocalLoss, weight_reduce_loss
+from mmdet.models.losses import L1Loss, GIoULoss, DIoULoss, IoULoss, FocalLoss, weight_reduce_loss
 from mmdet.models.task_modules import IoUCost, BBoxL1Cost, FocalLossCost
 from mmdet.registry import MODELS
-from mmdet.registry import TASK_UTILS
+from mmdet.registry import MODELS
 from mmengine.structures import InstanceData
 from torch import Tensor
 
@@ -138,7 +138,7 @@ class PositionFocalLoss(FocalLoss):
         return loss_cls
 
 
-@TASK_UTILS.register_module()
+@MODELS.register_module()
 class PositionFocalLossCost(FocalLossCost):
 
     def _focal_loss_cost(self, cls_pred: Tensor, gt_labels: Tensor, giou: Tensor) -> Tensor:
@@ -191,8 +191,14 @@ class PositionFocalLossCost(FocalLossCost):
             return self._focal_loss_cost(pred_scores, gt_labels, gious)
 
 
+@MODELS.register_module()
+class DIoU1dLoss(DIoULoss):
+    @zero_out_loss_coordinates_decorator
+    def forward(self, pred: Tensor, target: Tensor, *args, **kwargs) -> Tensor:
+        return super().forward(pred, target, *args, **kwargs)
+    
 @MODELS.register_module(force=True)
-class CustomL1Loss(L1Loss):
+class L1Loss(L1Loss):
     """Custom L1 loss so that y1, y2 don't contribute to the loss by multiplying them with zeros."""
 
     @zero_out_loss_coordinates_decorator
@@ -201,7 +207,7 @@ class CustomL1Loss(L1Loss):
 
 
 @MODELS.register_module(force=True)
-class CustomIoULoss(IoULoss):
+class IOU1dLoss(IoULoss):
     """Custom IoU loss so that y1, y2 don't contribute to the loss by multiplying them with zeros."""
 
     @zero_out_loss_coordinates_decorator
@@ -210,7 +216,7 @@ class CustomIoULoss(IoULoss):
 
 
 @MODELS.register_module(force=True)
-class CustomGIoULoss(GIoULoss):
+class GIoU1dLoss(GIoULoss):
     """Custom GIoU loss so that y1, y2 don't contribute to the loss by multiplying them with zeros
     """
 
@@ -219,15 +225,15 @@ class CustomGIoULoss(GIoULoss):
         return super().forward(pred, target, *args, **kwargs)
 
 
-@TASK_UTILS.register_module(force=True)
-class CustomIoUCost(IoUCost):
+@MODELS.register_module(force=True)
+class IoU1dCost(IoUCost):
     @zero_out_pred_coordinates_decorator
     def __call__(self, pred_instances: InstanceData, gt_instances: InstanceData, *args, **kwargs):
         return super().__call__(pred_instances, gt_instances, *args, **kwargs)
 
 
-@TASK_UTILS.register_module(force=True)
-class CustomBBoxL1Cost(BBoxL1Cost):
+@MODELS.register_module(force=True)
+class BBox1dL1Cost(BBoxL1Cost):
     @zero_out_pred_coordinates_decorator
     def __call__(self, pred_instances: InstanceData, gt_instances: InstanceData, *args, **kwargs):
         return super().__call__(pred_instances, gt_instances, *args, **kwargs)

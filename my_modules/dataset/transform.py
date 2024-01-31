@@ -121,20 +121,32 @@ def segment_overlaps(segments1,
 
 
 @TRANSFORMS.register_module()
-class SlidingWindow(BaseTransform):
+class LoadFeature(BaseTransform):
+    def transform(self,
+                  results: Dict) -> Optional[Union[Dict, Tuple[List, List]]]:
+        feat_start, feat_len, feat_path = results['feat_start'], results['feat_len'], results['feat_path']
+        feat = np.load(feat_path)[feat_start: feat_start + feat_len]
+        results['feat'] = feat
+
+        return results
+
+
+@TRANSFORMS.register_module()
+class RandomSlice(BaseTransform):
+    """Randomly slice a sub-video or sub-feature from a video/feature along the temporal axis."""
 
     def __init__(self,
                  window_size: int,  # the feature length input to the model
-                 iof_thr=0.75,
-                 attempts=1000,
-                 just_loading=False,
-                 crop_ratio=None):
+                 iof_thr: float = 0.75,
+                 attempts: int = 1000,
+                 size_jittering: Tuple[float] = None,
+                 frame_interval: int = 1):
         self.window_size = window_size
         # Only windows with IoF (Intersection over Foreground) > iof_thr for at least one action are valid.
         self.iof_thr = iof_thr
         self.attempts = attempts
-        self.crop_ratio = crop_ratio
-        self.just_loading = just_loading  # If True, sliding window was completed, we just load the features here.
+        self.size_jittering = size_jittering
+        self.frame_interval = frame_interval
 
     @staticmethod
     def get_valid_mask(segments, patch, iof_thr, ignore_flags=None):
@@ -149,60 +161,95 @@ class SlidingWindow(BaseTransform):
 
     def transform(self,
                   results: Dict, ) -> Optional[Union[Dict, Tuple[List, List]]]:
-        if not self.just_loading:
-            feat, feat_len = results['feat'], results['feat_len']
+        if 'feat_len' in results:
+            max_len = results['feat_len']
             # Convert the format of segment annotations from second-unit to feature-unit.
             # feat_stride tells that we extract one feature for every 'feat_stride' frames
-            segments_feat = results['segments'] * results['fps'] / results['feat_stride']
-
-            # Conduct sliding window
-            if feat_len > self.window_size:
-                crop_size = self.window_size
-            elif self.crop_ratio is not None:
-                crop_size = random.randint(
-                    max(round(self.crop_ratio[0] * feat_len), 1),
-                    min(round(self.crop_ratio[1] * feat_len), feat_len))
-            else:
-                crop_size = feat_len
-
-            for i in range(self.attempts):
-                start_idx = random.randint(0, feat_len - crop_size)
-                end_idx = start_idx + crop_size
-
-                # If no segments in the cropped window, then re-crop. Ignored segments (Ambiguous) do not count.
-                valid_mask = self.get_valid_mask(segments_feat,
-                                                 np.array([[start_idx, end_idx]], dtype=np.float32),
-                                                 iof_thr=self.iof_thr,
-                                                 ignore_flags=results.get('gt_ignore_flags',
-                                                                          np.full(segments_feat.shape[0], False)))
-                if not valid_mask.any():
-                    continue
-
-                # Convert the segment annotations to be relative to the cropped window.
-                segments_feat = segments_feat[valid_mask].clip(min=start_idx, max=end_idx) - start_idx
-                results['segments'] = segments_feat
-                results['labels'] = results['labels'][valid_mask]
-                if 'gt_ignore_flags' in results:
-                    results['gt_ignore_flags'] = results['gt_ignore_flags'][valid_mask]
-                results['feat'] = feat[start_idx: end_idx]
-                results['feat_len'] = crop_size
-                break
-            else:
-                raise RuntimeError(
-                    f"Could not found a valid crop after {self.attempts} attempts, "
-                    f"you may need modify the window size or number of attempts")
+            action_segments = results['segments'] * results['fps'] / results['feat_stride']
+        elif 'total_frames' in results:
+            max_len = results['total_frames']
+            # Convert the format of segment annotations from second-unit to frame-unit.
+            action_segments = results['segments'] * results['fps']
         else:
-            window_offset, feat_len, feat_path = results['window_offset'], results['feat_len'], results['feat_path']
-            feat = np.load(feat_path)[window_offset: window_offset + feat_len]
-            crop_size = feat_len
+            raise NotImplementedError
 
-        if crop_size < self.window_size:
-            # Padding the feature to window size if the feat is too short
-            feat = np.pad(feat, ((0, self.window_size - feat_len), (0, 0)), constant_values=0)
-        results['feat'] = feat
+        # Conduct random slicing
+        if max_len > self.window_size:
+            crop_size = self.window_size
+        elif self.size_jittering is not None:
+            # TODO: we follow the ActionFormer to only conduct size jittering when feature length smaller than
+            #  the window size. However, theoretically, the size jittering should be a independent operation.
+            crop_size = random.randint(
+                max(round(self.size_jittering[0] * max_len), 1),
+                min(round(self.size_jittering[1] * max_len), max_len))
+        else:
+            crop_size = max_len
+
+        for i in range(self.attempts):
+            start_idx = random.randint(0, max_len - crop_size)
+            end_idx = start_idx + crop_size
+
+            # If no segments in the cropped window, then re-crop. Ignored segments (Ambiguous) do not count.
+            valid_mask = self.get_valid_mask(action_segments,
+                                             np.array([[start_idx, end_idx]], dtype=np.float32),
+                                             iof_thr=self.iof_thr,
+                                             ignore_flags=results.get('gt_ignore_flags',
+                                                                      np.full(action_segments.shape[0], False)))
+            if not valid_mask.any():
+                continue
+            else:
+                break
+        else:
+            raise RuntimeError(
+                f"Could not found a valid crop after {self.attempts} attempts, "
+                f"you may need modify the window size or number of attempts")
+
+        # Convert the segment annotations to be relative to the cropped window.
+        action_segments = action_segments[valid_mask].clip(min=start_idx, max=end_idx) - start_idx
+        results['segments'] = action_segments
+        results['labels'] = results['labels'][valid_mask]
+        if 'gt_ignore_flags' in results:
+            results['gt_ignore_flags'] = results['gt_ignore_flags'][valid_mask]
+
+        if 'feat_len' in results:
+            results['feat_start'] = start_idx
+            results['feat_len'] = crop_size
+        elif 'total_frames' in results:
+            results['frame_inds'] = np.arange(start_idx, end_idx, step=self.frame_interval)
+            results['frame_interval'] = self.frame_interval
+            results['clip_len'] = crop_size // self.frame_interval
 
         return results
 
+
+@TRANSFORMS.register_module()
+class PadFeature(BaseTransform):
+
+    def __init__(self,
+                 pad_length: int = None,
+                 pad_length_divisor: int = 1,
+                 pad_value=0.0):
+        assert pad_length is None or pad_length % pad_length_divisor == 0, "pad_length must be divisible by pad_size_divisor"
+        self.pad_length = pad_length
+        self.pad_length_divisor = pad_length_divisor
+        self.pad_value = pad_value
+
+    def transform(self, results: Dict) -> Optional[Union[Dict, Tuple[List, List]]]:
+        feat, feat_len = results['feat'], results['feat_len']
+        assert len(feat) == feat_len
+
+        # Case 1: Pad to specified length
+        if self.pad_length is not None and feat_len < self.pad_length:
+            feat = np.pad(feat, ((0, self.pad_length - feat_len), (0, 0)), constant_values=self.pad_value)
+            feat_len = self.pad_length
+
+        # Case 2 & 3: Pad to make divisible (applies when feat_len >= pad_length or only divisible is set)
+        if feat_len % self.pad_length_divisor != 0:
+            pad_amount = self.pad_length_divisor - (feat_len % self.pad_length_divisor)
+            feat = np.pad(feat, ((0, pad_amount), (0, 0)), constant_values=self.pad_value)
+
+        results['feat'] = feat
+        return results
 
 @TRANSFORMS.register_module()
 class PackTADInputs(BaseTransform):
@@ -262,19 +309,20 @@ class PackTADInputs(BaseTransform):
         results.update({'gt_bboxes_labels': results.pop('labels')})
         results.update({"img_id": results.pop("video_name")})
         if 'feat' in results:
-            results.update({'img': results.pop('feat')})
-            # results.update({'img_shape': results['ori_shape']})
-            results.update({'img_shape': (1, len(results['img']))})
+            # from [T, C] to [C, 1, T], mimic the [C, H, W]
+            results.update({'img': results.pop('feat').T[:, np.newaxis, :]})
             results.update({'ori_shape': (1, results.pop('feat_len'))})
+            results.update({'img_shape': results['ori_shape']})  # for ActionFormer
+            # results.update({'img_shape': (1, results['img'].shape[-1])})  #  for DITA
 
         else:
             assert 'imgs' in results
             results.update({'img': results.pop('imgs')})
-            results.update({'img_shape': (1, results['img'].shape[2] * results['num_clips'])})
             results.update({'ori_shape': (1, results.pop('valid_len'))})
+            results.update({'img_shape': (1, results['img'].shape[2] * results['num_clips'])})
 
         results['img_path'] = ''
-        results['scale_factor'] = [1.0, 1.0]    # The second depends on if the backbone scale down temporal length
+        results['scale_factor'] = [1.0, 1.0]  # The second depends on if the backbone scale down temporal length
         results['flip'] = False
         results['flip_direction'] = None
 
@@ -296,7 +344,7 @@ class PackTADInputs(BaseTransform):
         results = self.map_to_mmdet(results)
         packed_results = dict()
         img = results['img']
-        assert len(img.shape) == 5
+        assert len(img.shape) == 5 or len(img.shape) == 3  # M, C, T, H, W or C, 1, T, for video frames or features
         if not img.flags.c_contiguous:
             img = np.ascontiguousarray(img)
             img = to_tensor(img)

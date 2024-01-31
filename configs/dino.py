@@ -38,23 +38,21 @@ param_scheduler = [
 
 # 2. Use the self-supervised features (VideoMAE2)
 train_pipeline = [
-    dict(type='SlidingWindow', window_size=256, just_loading=True),
-    dict(type='ReFormat'),
-    dict(type='PackDetInputs',
+    dict(type='LoadFeature'),
+    dict(type='PadFeature', window_size=256),
+    dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
                     'scale_factor', 'flip', 'flip_direction',
                     'fps', 'feat_stride', 'window_offset'))]
 test_pipeline = [
-    dict(type='SlidingWindow', window_size=256, just_loading=True),
-    dict(type='ReFormat'),
-    dict(type='PackDetInputs',
+    dict(type='LoadFeature'),
+    dict(type='PadFeature', window_size=256),
+    dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
                     'scale_factor', 'flip', 'flip_direction',
                     'fps', 'feat_stride', 'window_offset', 'overlap'))]
 train_dataloader = dict(
     dataset=dict(feat_stride=4,
-                 fix_slice=True,
-                 on_the_fly=True,
                  window_size=256,
                  iof_thr=0.75,
                  window_stride=64,  # overlap=0.75
@@ -62,8 +60,6 @@ train_dataloader = dict(
                  data_prefix=dict(feat='features/thumos_feat_VideoMAE2-RGB_I3D-Flow_2432')))
 val_dataloader = dict(
     dataset=dict(feat_stride=4,
-                 fix_slice=True,
-                 on_the_fly=True,
                  window_size=256,
                  window_stride=192,  # overlap=0.25
                  pipeline=test_pipeline,
@@ -100,14 +96,14 @@ model = dict(
     decoder=dict(num_layers=4, layer_cfg=dict(cross_attn_cfg=dict(num_levels=4))),
     bbox_head=dict(type='CustomDINOHead', num_classes=20, sync_cls_avg_factor=True,
                    loss_cls=dict(type='FocalLoss', use_sigmoid=True, gamma=2.0, alpha=0.25, loss_weight=2.0),  # 2.0
-                   loss_bbox=dict(type='CustomL1Loss', loss_weight=5.0),
-                   loss_iou=dict(_delete_=True, type='CustomGIoULoss', loss_weight=2.0)),
+                   loss_bbox=dict(type='L1Loss', loss_weight=5.0),
+                   loss_iou=dict(_delete_=True, type='GIoU1dLoss', loss_weight=2.0)),
     dn_cfg=dict(label_noise_scale=0.5, box_noise_scale=1.0,
                 group_cfg=dict(dynamic=True, num_groups=None, num_dn_queries=100)),
     train_cfg=dict(assigner=dict(type='HungarianAssigner',
                                  match_costs=[dict(type='FocalLossCost', weight=2.0, gamma=2.0, alpha=0.25),
-                                              dict(type='CustomBBoxL1Cost', weight=5.0, box_format='xywh'),
-                                              dict(type='CustomIoUCost', iou_mode='giou', weight=2.0)]),
+                                              dict(type='BBox1dL1Cost', weight=5.0, box_format='xywh'),
+                                              dict(type='IoU1dCost', iou_mode='giou', weight=2.0)]),
 
                    )
 
