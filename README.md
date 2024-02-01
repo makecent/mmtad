@@ -1,5 +1,20 @@
-# The official repo for DITA
-The code is not completed and the readme.md need to be updated.
+# Temporal action detection using mmdetection and mmaction2
+
+This repository contains **unoffical** codes of several temporal action detection (TAD) methods that implemented in [open-mmlab](https://github.com/open-mmlab) style. 
+[mmengine](https://github.com/open-mmlab/mmengine), [mmcv](https://github.com/open-mmlab/mmcv), [mmdetection](https://github.com/open-mmlab/mmdetection), and [mmaction2](https://github.com/open-mmlab/mmaction2) are the main backends.
+
+> I am **NOT** an employee of open-mmlab, **neither** the author of many of the implemented TAD methods here
+
+# Supported TAD methods
+- APN (official)
+- DITA (official)
+- ActionFormer
+- TadTR
+- BasicTAD
+
+
+# Current status (2 Jan 2024)
+The repository is still under construction and the readme.md need to be updated.
 
 
 # Prepare the environment
