@@ -2,7 +2,6 @@ import random
 from typing import Dict, Optional, Tuple, List, Union
 
 import numpy as np
-import torch
 from mmaction.datasets.transforms import RawFrameDecode
 from mmcv.transforms import to_tensor
 from mmcv.transforms.base import BaseTransform
@@ -10,114 +9,7 @@ from mmdet.registry import TRANSFORMS
 from mmdet.structures import DetDataSample
 from mmengine.structures import InstanceData
 
-
-def segment_overlaps(segments1,
-                     segments2,
-                     mode='iou',
-                     is_aligned=False,
-                     eps=1e-6,
-                     detect_overlap_edge=False):
-    """Calculate overlap between two set of segments.
-    If ``is_aligned`` is ``False``, then calculate the ious between each
-    segment of segments1 and segments2, otherwise the ious between each aligned
-     pair of segments1 and segments2.
-    Args:
-        segments1 (Tensor): shape (m, 2) in <t1, t2> format or empty.
-        segments2 (Tensor): shape (n, 2) in <t1, t2> format or empty.
-            If is_aligned is ``True``, then m and n must be equal.
-        mode (str): "iou" (intersection over union) or iof (intersection over
-            foreground).
-    Returns:
-        ious(Tensor): shape (m, n) if is_aligned == False else shape (m, 1)
-    Example:
-        >>> segments1 = torch.FloatTensor([
-        >>>     [0, 10],
-        >>>     [10, 20],
-        >>>     [32, 38],
-        >>> ])
-        >>> segments2 = torch.FloatTensor([
-        >>>     [0, 20],
-        >>>     [0, 19],
-        >>>     [10, 20],
-        >>> ])
-        >>> segment_overlaps(segments1, segments2)
-        tensor([[0.5000, 0.5263, 0.0000],
-                [0.0000, 0.4500, 1.0000],
-                [0.0000, 0.0000, 0.0000]])
-    Example:
-        >>> empty = torch.FloatTensor([])
-        >>> nonempty = torch.FloatTensor([
-        >>>     [0, 9],
-        >>> ])
-        >>> assert tuple(segment_overlaps(empty, nonempty).shape) == (0, 1)
-        >>> assert tuple(segment_overlaps(nonempty, empty).shape) == (1, 0)
-        >>> assert tuple(segment_overlaps(empty, empty).shape) == (0, 0)
-    """
-
-    is_numpy = False
-    if isinstance(segments1, np.ndarray):
-        segments1 = torch.from_numpy(segments1)
-        is_numpy = True
-    if isinstance(segments2, np.ndarray):
-        segments2 = torch.from_numpy(segments2)
-        is_numpy = True
-
-    segments1, segments2 = segments1.float(), segments2.float()
-
-    assert mode in ['iou', 'iof']
-    # Either the segments are empty or the length of segments' last dimenstion is 2
-    assert (segments1.size(-1) == 2 or segments1.size(0) == 0)
-    assert (segments2.size(-1) == 2 or segments2.size(0) == 0)
-
-    rows = segments1.size(0)
-    cols = segments2.size(0)
-    if is_aligned:
-        assert rows == cols
-
-    if rows * cols == 0:
-        ious = segments1.new(rows, 1) if is_aligned else segments2.new(rows, cols)
-        return ious.numpy() if is_numpy else ious
-
-    if is_aligned:
-        start = torch.max(segments1[:, 0], segments2[:, 0])  # [rows]
-        end = torch.min(segments1[:, 1], segments2[:, 1])  # [rows]
-
-        overlap = end - start
-        if detect_overlap_edge:
-            overlap[overlap == 0] += eps
-        overlap = overlap.clamp(min=0)  # [rows, 2]
-        area1 = segments1[:, 1] - segments1[:, 0]
-
-        if mode == 'iou':
-            area2 = segments2[:, 1] - segments2[:, 0]
-            union = area1 + area2 - overlap
-        else:
-            union = area1
-    else:
-        start = torch.max(segments1[:, None, 0], segments2[:,
-                                                 0])  # [rows, cols]
-        end = torch.min(segments1[:, None, 1], segments2[:, 1])  # [rows, cols]
-
-        overlap = end - start
-        if detect_overlap_edge:
-            overlap[overlap == 0] += eps
-        overlap = overlap.clamp(min=0)  # [rows, 2]
-        area1 = segments1[:, 1] - segments1[:, 0]
-
-        if mode == 'iou':
-            area2 = segments2[:, 1] - segments2[:, 0]
-            union = area1[:, None] + area2 - overlap
-        else:
-            union = area1[:, None]
-
-    eps = union.new_tensor([eps])
-    union = torch.max(union, eps)
-    ious = overlap / union
-
-    if is_numpy:
-        ious = ious.numpy()
-
-    return ious
+from my_modules.task_modules.segments_ops import segment_overlaps
 
 
 @TRANSFORMS.register_module()
@@ -131,6 +23,36 @@ class LoadFeature(BaseTransform):
         feat_start, feat_len = results['feat_start'], results['feat_len']
         results['feat'] = feat[feat_start: feat_start + feat_len]
 
+        return results
+
+
+@TRANSFORMS.register_module()
+class PadFeature(BaseTransform):
+
+    def __init__(self,
+                 pad_length: int = None,
+                 pad_length_divisor: int = 1,
+                 pad_value=0.0):
+        assert pad_length is None or pad_length % pad_length_divisor == 0, "pad_length must be divisible by pad_size_divisor"
+        self.pad_length = pad_length
+        self.pad_length_divisor = pad_length_divisor
+        self.pad_value = pad_value
+
+    def transform(self, results: Dict) -> Optional[Union[Dict, Tuple[List, List]]]:
+        feat, feat_len = results['feat'], results['feat_len']
+        assert len(feat) == feat_len
+
+        # Case 1: Pad to specified length
+        if self.pad_length is not None and feat_len < self.pad_length:
+            feat = np.pad(feat, ((0, self.pad_length - feat_len), (0, 0)), constant_values=self.pad_value)
+            feat_len = self.pad_length
+
+        # Case 2 & 3: Pad to make divisible (applies when feat_len >= pad_length or only divisible is set)
+        if feat_len % self.pad_length_divisor != 0:
+            pad_amount = self.pad_length_divisor - (feat_len % self.pad_length_divisor)
+            feat = np.pad(feat, ((0, pad_amount), (0, 0)), constant_values=self.pad_value)
+
+        results['feat'] = feat
         return results
 
 
@@ -224,35 +146,6 @@ class RandomSlice(BaseTransform):
 
         return results
 
-
-@TRANSFORMS.register_module()
-class PadFeature(BaseTransform):
-
-    def __init__(self,
-                 pad_length: int = None,
-                 pad_length_divisor: int = 1,
-                 pad_value=0.0):
-        assert pad_length is None or pad_length % pad_length_divisor == 0, "pad_length must be divisible by pad_size_divisor"
-        self.pad_length = pad_length
-        self.pad_length_divisor = pad_length_divisor
-        self.pad_value = pad_value
-
-    def transform(self, results: Dict) -> Optional[Union[Dict, Tuple[List, List]]]:
-        feat, feat_len = results['feat'], results['feat_len']
-        assert len(feat) == feat_len
-
-        # Case 1: Pad to specified length
-        if self.pad_length is not None and feat_len < self.pad_length:
-            feat = np.pad(feat, ((0, self.pad_length - feat_len), (0, 0)), constant_values=self.pad_value)
-            feat_len = self.pad_length
-
-        # Case 2 & 3: Pad to make divisible (applies when feat_len >= pad_length or only divisible is set)
-        if feat_len % self.pad_length_divisor != 0:
-            pad_amount = self.pad_length_divisor - (feat_len % self.pad_length_divisor)
-            feat = np.pad(feat, ((0, pad_amount), (0, 0)), constant_values=self.pad_value)
-
-        results['feat'] = feat
-        return results
 
 @TRANSFORMS.register_module()
 class PackTADInputs(BaseTransform):

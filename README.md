@@ -36,6 +36,12 @@ different number of GPUs. For example, if you want to use 8 GPUs, you may add `-
 to reduce the batch_size on single GPU by 8 in order to keep the final batch size unchanged.
 - 
 # Reproduce TadTR
+```terminal
+mmaction2  1.2.0      https://github.com/open-mmlab/mmaction2
+mmcv       2.1.0      https://github.com/open-mmlab/mmcv
+mmdet      3.3.0      https://github.com/open-mmlab/mmdetection
+mmengine   0.10.3     https://github.com/open-mmlab/mmengine
+```
 ## THUMOS14 with I3D features
 ### Prepare data
 Download the pre-extracted features from the [official repository](https://github.com/happyharrycn/actionformer_release/)
@@ -53,6 +59,12 @@ mim train mmaction configs/repo_actionformer_th14.py --gpus 2 --launcher pytorch
 ```
 
 # Reproduce ActionFormer
+```terminal
+mmaction2  1.2.0      https://github.com/open-mmlab/mmaction2
+mmcv       2.1.0      https://github.com/open-mmlab/mmcv
+mmdet      3.3.0      https://github.com/open-mmlab/mmdetection
+mmengine   0.10.3     https://github.com/open-mmlab/mmengine
+```
 ## THUMOS14 with I3D features
 ### Prepare data
 Download the pre-extracted features from the [official repository](https://github.com/happyharrycn/actionformer_release/)

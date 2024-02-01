@@ -14,13 +14,15 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 
-vis_backends = [dict(type='LocalVisBackend'), dict(type='TensorboardVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project='TAD_DINO'), define_metric_cfg={'pascal_voc/mAP': 'max'})]
-# vis_backends = [dict(type='LocalVisBackend'), dict(type='TensorboardVisBackend')]
+# vis_backends = [dict(type='LocalVisBackend'), dict(type='TensorboardVisBackend'),
+#                 dict(type='WandbVisBackend', init_kwargs=dict(project='TAD_DINO'), define_metric_cfg={'pascal_voc/mAP': 'max'})]
+vis_backends = [dict(type='LocalVisBackend'), dict(type='TensorboardVisBackend')]
 visualizer = dict(
     type='DetLocalVisualizer', vis_backends=vis_backends, name='visualizer')
 log_processor = dict(type='LogProcessor', window_size=50, by_epoch=True)
 
+val_cfg = dict(type='ValLoop')
+test_cfg = dict(type='TestLoop')
 log_level = 'INFO'
 load_from = None
 resume = False

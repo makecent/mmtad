@@ -1,12 +1,10 @@
-from mmdet.models.losses import L1Loss, GIoULoss, IoULoss, FocalLoss, weight_reduce_loss
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from mmdet.models.losses import L1Loss, GIoULoss, DIoULoss, IoULoss, FocalLoss, weight_reduce_loss
 from mmdet.models.task_modules import IoUCost, BBoxL1Cost, FocalLossCost
-from mmdet.registry import MODELS
-from mmdet.registry import MODELS
+from mmdet.registry import MODELS, TASK_UTILS
 from mmengine.structures import InstanceData
 from torch import Tensor
 
@@ -56,8 +54,8 @@ def py_sigmoid_focal_loss(pred,
     """
     pred_sigmoid = pred.sigmoid()
     target = target.type_as(pred)
-    f = iou**2
-    f = f/f.max()
+    f = iou ** 2
+    f = f / f.max()
     pt = (f - pred_sigmoid) * target * f + pred_sigmoid * (1 - target)
     focal_weight = (alpha * target + (1 - alpha) *
                     (1 - target)) * pt.pow(gamma)
@@ -151,7 +149,7 @@ class PositionFocalLossCost(FocalLossCost):
         Returns:
             torch.Tensor: cls_cost value with weight
         """
-        f = (giou + 1)/2
+        f = (giou + 1) / 2
         f = f ** 0.5
         cls_pred = cls_pred[:, gt_labels].sigmoid() * f
         neg_cost = -(1 - cls_pred + self.eps).log() * (
@@ -196,7 +194,8 @@ class DIoU1dLoss(DIoULoss):
     @zero_out_loss_coordinates_decorator
     def forward(self, pred: Tensor, target: Tensor, *args, **kwargs) -> Tensor:
         return super().forward(pred, target, *args, **kwargs)
-    
+
+
 @MODELS.register_module(force=True)
 class L1Loss(L1Loss):
     """Custom L1 loss so that y1, y2 don't contribute to the loss by multiplying them with zeros."""
@@ -225,14 +224,14 @@ class GIoU1dLoss(GIoULoss):
         return super().forward(pred, target, *args, **kwargs)
 
 
-@MODELS.register_module(force=True)
+@TASK_UTILS.register_module(force=True)
 class IoU1dCost(IoUCost):
     @zero_out_pred_coordinates_decorator
     def __call__(self, pred_instances: InstanceData, gt_instances: InstanceData, *args, **kwargs):
         return super().__call__(pred_instances, gt_instances, *args, **kwargs)
 
 
-@MODELS.register_module(force=True)
+@TASK_UTILS.register_module(force=True)
 class BBox1dL1Cost(BBoxL1Cost):
     @zero_out_pred_coordinates_decorator
     def __call__(self, pred_instances: InstanceData, gt_instances: InstanceData, *args, **kwargs):

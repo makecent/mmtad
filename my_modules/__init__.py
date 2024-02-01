@@ -5,5 +5,4 @@ from .head import *
 from .loss import *
 from .layers import *
 from .neck import *
-from .nms1d import *
 from .task_modules import *

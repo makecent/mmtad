@@ -11,8 +11,8 @@ from mmengine.model import xavier_init
 from torch import Tensor, nn
 from torch.nn.init import normal_
 
-from my_modules.layers.custom_layers import CustomDeformableDetrTransformerEncoder, CustomDinoTransformerDecoder
-from my_modules.layers.positional_encoding import CustomSinePositionalEncoding
+from my_modules.layers.dita_layers import DitaTransformerEncoder, Dino1dTransformerDecoder
+from my_modules.layers.positional_encoding import SinePositional1dEncoding
 from my_modules.layers.pseudo_layers import Pseudo4DRegLinear
 
 
@@ -42,10 +42,10 @@ class CustomDINO(DINO):
 
     def _init_layers(self) -> None:
         """Initialize layers except for backbone, neck and bbox_head."""
-        self.positional_encoding = CustomSinePositionalEncoding(
+        self.positional_encoding = SinePositional1dEncoding(
             **self.positional_encoding)
-        self.encoder = CustomDeformableDetrTransformerEncoder(**self.encoder)
-        self.decoder = CustomDinoTransformerDecoder(**self.decoder)
+        self.encoder = DitaTransformerEncoder(**self.encoder)
+        self.decoder = Dino1dTransformerDecoder(**self.decoder)
         self.embed_dims = self.encoder.embed_dims
         self.query_embedding = nn.Embedding(self.num_queries, self.embed_dims)
         # NOTE In DINO, the query_embedding only contains content

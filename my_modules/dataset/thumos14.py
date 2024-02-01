@@ -80,7 +80,7 @@ class THUMOS14Dataset(BaseDetDataset):
             # fps = total_frames / video_info['duration']
 
             # Or you may directly use the information in the annotation file (which are calculated via VideoReader),
-            # but the `num_frame` and `FPS` may differ from the ones that you extract the frames by yourself.
+            # but the `num_frame` and `FPS` may sightly differ from the number of extracted frames.
             total_frames = video_info['num_frame']
             fps = float(int(video_info['FPS']))
 

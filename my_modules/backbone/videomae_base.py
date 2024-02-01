@@ -4,8 +4,10 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from mmdet.registry import MODELS
-from torch.nn import GroupNorm, LayerNorm
 from mmengine.utils.dl_utils.parrots_wrapper import _BatchNorm, _InstanceNorm
+from torch.nn import GroupNorm, LayerNorm
+
+torch.fx.wrap('rearrange')
 
 
 @MODELS.register_module()

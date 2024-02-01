@@ -32,6 +32,7 @@ model = dict(
         kernel_size=1,
         out_channels=256,
         act_cfg=None,
+        bias=True,
         norm_cfg=dict(type='GN', num_groups=32),
         num_outs=1),
     encoder=dict(
@@ -65,8 +66,7 @@ model = dict(
                 ffn_drop=dropout)),
         post_norm_cfg=None),
     # offset=-0.5 for DeformableDETR;
-    # the real num_feats is 128*2=256, 128 is just for the compatibility.
-    positional_encoding=dict(num_feats=128, normalize=True, offset=0, temperature=10000),
+    positional_encoding=dict(num_feats=256, normalize=True, offset=0, temperature=10000),
     bbox_head=dict(
         type='TadTRHead',
         num_classes=20,
@@ -127,6 +127,7 @@ data_root = 'my_data/thumos14/'
 
 train_pipeline = [
     dict(type='LoadFeature'),
+    dict(type='PadFeature', pad_length=256),
     dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
                     'scale_factor', 'flip', 'flip_direction',
@@ -134,6 +135,7 @@ train_pipeline = [
 ]
 test_pipeline = [
     dict(type='LoadFeature'),
+    dict(type='PadFeature', pad_length=256),
     dict(type='PackTADInputs',
          meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
                     'scale_factor', 'flip', 'flip_direction',
@@ -151,6 +153,7 @@ train_dataloader = dict(
         feat_stride=8,
         window_size=128,
         window_stride=32,
+        pre_load_feat=False,
         iof_thr=0.75,
         skip_short=0.3,   # skip action annotations with duration less than 0.3 seconds
         skip_wrong=True,  # skip action annotations out of the range of video duration
@@ -170,6 +173,7 @@ val_dataloader = dict(
         feat_stride=8,
         window_size=128,
         window_stride=96,
+        pre_load_feat=False,
         skip_short=False,
         skip_wrong=True,
         data_prefix=dict(feat='features/thumos_feat_TadTR_64input_8stride_2048'),
