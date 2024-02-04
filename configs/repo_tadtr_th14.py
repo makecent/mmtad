@@ -1,7 +1,6 @@
 _base_ = [
     'default_runtime.py', './thumos14_feat.py'
 ]
-custom_imports = dict(imports=['my_modules'], allow_failed_imports=False)
 
 # TadTR (based on DeFormableDETR) setting: (DINO, TadTR)
 enc_layers = 4  # 6, 4
@@ -91,17 +90,10 @@ model = dict(
     test_cfg=dict(max_per_img=max_per_img))
 
 # optimizer
-optim_wrapper = dict(
-    type='OptimWrapper',
-    optimizer=dict(
-        type='AdamW',
-        lr=lr,
-        weight_decay=0.0001),  # 0.0001 by default
-    clip_grad=dict(max_norm=0.1, norm_type=2),
-    paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1),
-                                    'sampling_offsets': dict(lr_mult=0.1),
-                                    'reference_points': dict(lr_mult=0.1)
-                                    }))
+optim_wrapper = dict(optimizer=dict(type='AdamW', lr=lr, weight_decay=0.0001),
+                     clip_grad=dict(max_norm=0.1, norm_type=2),
+                     paramwise_cfg=dict(custom_keys={'sampling_offsets': dict(lr_mult=0.1),
+                                                     'reference_points': dict(lr_mult=0.1)}))
 
 # learning policy
 max_epochs = 16
@@ -128,22 +120,17 @@ data_root = 'my_data/thumos14/'
 train_pipeline = [
     dict(type='LoadFeature'),
     dict(type='PadFeature', pad_length=256),
-    dict(type='PackTADInputs',
-         meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
-                    'scale_factor', 'flip', 'flip_direction',
-                    'fps', 'feat_stride', 'window_offset'))
+    dict(type='PackTADInputs', meta_keys=())
 ]
 test_pipeline = [
     dict(type='LoadFeature'),
     dict(type='PadFeature', pad_length=256),
     dict(type='PackTADInputs',
-         meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
-                    'scale_factor', 'flip', 'flip_direction',
-                    'fps', 'feat_stride', 'window_offset', 'overlap'))
+         meta_keys=('video_name', 'fps', 'feat_stride', 'window_offset', 'overlap'))
 ]
 train_dataloader = dict(
     batch_size=2,
-    num_workers=2,
+    num_workers=6,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
@@ -155,7 +142,7 @@ train_dataloader = dict(
         window_stride=32,
         pre_load_feat=False,
         iof_thr=0.75,
-        skip_short=0.3,   # skip action annotations with duration less than 0.3 seconds
+        skip_short=0.3,  # skip action annotations with duration less than 0.3 seconds
         skip_wrong=True,  # skip action annotations out of the range of video duration
         data_prefix=dict(feat='features/thumos_feat_TadTR_64input_8stride_2048'),
         filter_cfg=dict(filter_empty_gt=False),
@@ -180,12 +167,6 @@ val_dataloader = dict(
         test_mode=True,
         pipeline=test_pipeline))
 test_dataloader = val_dataloader
-val_evaluator = dict(
-    type='TH14Metric',
-    merge_windows=True,
-    metric='mAP',
-    iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
-    nms_cfg=dict(type='nms', iou_thr=0.4))
+val_evaluator = dict(type='TadMetric', merge_windows=True, nms_in_overlap=True,
+                     iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7], nms_cfg=dict(type='nms', iou_thr=0.4))
 test_evaluator = val_evaluator
-
-

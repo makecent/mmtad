@@ -1,5 +1,5 @@
 from mmdet.models.task_modules.assigners.iou2d_calculator import BboxOverlaps2D
-from mmaction.registry import TASK_UTILS
+from mmdet.registry import TASK_UTILS
 from mmdet.structures.bbox import get_box_tensor
 
 

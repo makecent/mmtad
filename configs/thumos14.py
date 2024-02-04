@@ -24,7 +24,7 @@ train_pipeline = [
     # dict(type='mmaction.Resize', scale=(128, -1), keep_ratio=True), # scale images' short-side to 128, keep aspect ratio
     # dict(type='mmaction.RandomCrop', size=img_shape[0]),
     dict(type='mmaction.Flip', flip_ratio=0.5),
-    dict(type='Pad3D', size=(window_size//frame_interval, *img_shape)),
+    dict(type='Pad3d', size=(window_size//frame_interval, *img_shape)),
     dict(type='TemporalSegment', num_clips=num_clips),
     dict(type='mmaction.FormatShape', input_format='NCTHW'),
     dict(type='PackTADInputs',
@@ -38,7 +38,7 @@ test_pipeline = [
     dict(type='mmaction.Resize', scale=img_shape_test, keep_ratio=False),
     # dict(type='mmaction.Resize', scale=(128, -1), keep_ratio=True),
     # dict(type='mmaction.CenterCrop', crop_size=img_shape_test),
-    dict(type='Pad3D', size=(window_size//frame_interval, *img_shape_test)),
+    dict(type='Pad3d', size=(window_size//frame_interval, *img_shape_test)),
     dict(type='TemporalSegment', num_clips=num_clips),
     dict(type='mmaction.FormatShape', input_format='NCTHW'),
     dict(type='PackTADInputs',

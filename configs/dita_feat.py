@@ -1,13 +1,7 @@
 _base_ = [
     'default_runtime.py', './thumos14_feat.py'
 ]
-custom_imports = dict(imports=['my_modules'], allow_failed_imports=False)
-# Compared with TadTR:
-# 1. Use multi-level features via temporal 1d convolution layers
-# 2. Reduce the number of epoch from 16 to 12, lr from 2e-4 to 1e-4
-# 3. Use the self-supervised features (VideoMAE2), window-size=256
-# 4. Use GIoU loss and cost
-# 5. Use memory fusion
+
 enc_layers = 4
 dec_layers = 4
 dim_feature = 2048
@@ -133,17 +127,14 @@ data_root = 'my_data/thumos14/'
 train_pipeline = [
     dict(type='LoadFeature'),
     dict(type='PadFeature', pad_length=256),
-    dict(type='PackTADInputs',
-         meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
-                    'scale_factor', 'flip', 'flip_direction',
-                    'fps', 'feat_stride', 'window_offset'))]
+    dict(type='PackTADInputs', meta_keys=())
+]
 test_pipeline = [
     dict(type='LoadFeature'),
     dict(type='PadFeature', pad_length=256),
     dict(type='PackTADInputs',
-         meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
-                    'scale_factor', 'flip', 'flip_direction',
-                    'fps', 'feat_stride', 'window_offset', 'overlap'))]
+         meta_keys=('video_name', 'window_offset', 'fps', 'feat_stride', 'valid_len', 'overlap'))
+]
 train_dataloader = dict(
     batch_size=2,
     num_workers=2,
@@ -186,11 +177,6 @@ val_dataloader = dict(
         pipeline=test_pipeline))
 test_dataloader = val_dataloader
 
-val_evaluator = dict(
-    type='TH14Metric',
-    merge_windows=True,
-    metric='mAP',
-    iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
-    nms_in_overlap=False,  # True for TadTR
-    nms_cfg=dict(type='nms', iou_thr=0.6))  # 0.4 for TadTR
+val_evaluator = dict(type='TadMetric', merge_windows=True, iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
+                     nms_cfg=dict(type='nms', iou_thr=0.6))  # 0.4 for TadTR
 test_evaluator = val_evaluator

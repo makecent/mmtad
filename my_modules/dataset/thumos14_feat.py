@@ -23,7 +23,7 @@ class Thumos14FeatDataset(BaseDetDataset):
                     wrong_videos=('video_test_0000270', 'video_test_0001292', 'video_test_0001496'))
 
     def __init__(self,
-                 feat_stride,  # feature are extracted every n frames
+                 feat_stride: int = 1,  # feature are extracted every n frames
                  skip_short=False,  # skip too short annotations
                  skip_wrong=False,  # skip videos that are wrong annotated
                  pre_load_feat: bool = False,  # whether pre-load all the features/feature windows to cpu memory
@@ -71,14 +71,17 @@ class Thumos14FeatDataset(BaseDetDataset):
                              duration=float(video_info['duration']),
                              fps=float(video_info['FPS']),
                              feat_stride=self.feat_stride,
-                             segments=segments,
                              labels=labels,
-                             gt_ignore_flags=ignore_flags)
+                             ignore_flags=ignore_flags)
 
             if self.window_stride is None:
-                data_info.update(dict(feat_start=0, feat_len=feat_len))
+                data_info.update(dict(feat_start=0, valid_len=feat_len))
                 if self.pre_load_feat:
                     data_info.update(dict(feat=feat))
+                if self.test_mode:
+                    data_info.update(dict(segments=segments))
+                else:
+                    data_info.update(dict(segments=segments_f))
                 data_list.append(data_info)
             else:
                 # Perform fixed-stride sliding window
@@ -95,9 +98,11 @@ class Thumos14FeatDataset(BaseDetDataset):
                         start_indices = np.append(start_indices, tail_start)
                         end_indices = np.append(end_indices, feat_len)
                 else:
-                    start_indices = np.arange(feat_len // self.window_stride + 1) * self.window_stride
+                    # Sliding window with fixed stride, and the last windows may be incomplete and need padding
+                    start_indices = np.arange(feat_len, self.window_stride)
                     end_indices = (start_indices + self.window_size).clip(max=feat_len)
-                # Compute overlapped regions
+
+                # Record the overlapped regions
                 overlapped_regions = np.array(
                     [[start_indices[i], end_indices[i - 1]] for i in range(1, len(start_indices))])
                 overlapped_regions = overlapped_regions * self.feat_stride / data_info['fps']
@@ -107,13 +112,13 @@ class Thumos14FeatDataset(BaseDetDataset):
                     feat_win_len = end_idx - start_idx
                     data_info.update(dict(window_offset=start_idx * self.feat_stride / data_info['fps'],
                                           feat_start=start_idx,
-                                          feat_len=feat_win_len))  # it may smaller than window_size
+                                          valid_len=feat_win_len))  # it may smaller than window_size
                     if self.pre_load_feat:
                         feat_window = feat[start_idx: end_idx]
                         data_info.update(dict(feat=feat_window))
 
                     if self.test_mode:
-                        data_info.update(dict(overlap=overlapped_regions))
+                        data_info.update(dict(segments=segments, overlap=overlapped_regions))
                     else:
                         # During the training, windows has no segment annotated are skipped
                         # Also known as Integrity-based instance filtering (IBIF)
@@ -129,7 +134,7 @@ class Thumos14FeatDataset(BaseDetDataset):
                         _ignore_flags = ignore_flags[valid_mask]
                         data_info.update(dict(segments=_segments_f,
                                               labels=_labels,
-                                              gt_ignore_flags=_ignore_flags))
+                                              ignore_flags=_ignore_flags))
 
                     data_list.append(deepcopy(data_info))
         assert len(data_list) > 0

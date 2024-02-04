@@ -1,28 +1,18 @@
 import numpy as np
 import torch
 from mmcv.ops import batched_nms
+from mmdet.structures.bbox import bbox_overlaps
+from torch import Tensor
 
 
-def convert_1d_to_2d_bboxes(bboxes_1d, fixed_dim_value=0):
-    """
-    Convert 1D bounding boxes to pseudo 2D bounding boxes by adding a fixed dimension.
-
-    Args:
-        bboxes_1d (torch.Tensor): 1D bounding boxes tensor of shape (N, 2)
-        fixed_dim_value (float): Value to set for the fixed dimension in the 2D bounding boxes
-
-    Returns:
-        torch.Tensor: Pseudo 2D bounding boxes tensor of shape (N, 4)
-    """
-    # Get the number of bounding boxes
+def convert_1d_to_2d_bboxes(bboxes_1d, y1=0.1, y2=0.9):
     num_bboxes = bboxes_1d.shape[0]
-
     # Initialize the 2D bounding boxes tensor
     bboxes_2d = torch.zeros((num_bboxes, 4), device=bboxes_1d.device, dtype=bboxes_1d.dtype)
 
     # Set the fixed dimension value for ymin and ymax
-    bboxes_2d[:, 1] = fixed_dim_value
-    bboxes_2d[:, 3] = fixed_dim_value + 1
+    bboxes_2d[:, 1] = y1
+    bboxes_2d[:, 3] = y2
 
     # Copy the 1D intervals (xmin and xmax) to the 2D bounding boxes
     bboxes_2d[:, 0::2] = bboxes_1d
@@ -175,6 +165,72 @@ def segment_overlaps(segments1,
         ious = ious.numpy()
 
     return ious
+
+
+def bbox_voting(det_bboxes: Tensor, det_labels: Tensor,
+                all_bboxes: Tensor, all_scores: Tensor,
+                num_classes: int = None, all_labels: Tensor = None,
+                iou_thr: float = 0.01, score_thr: float = 0.0,
+                class_agnostic: bool = False) -> Tensor:
+    """Implementation of score voting method works on each remaining boxes
+    after NMS procedure. If voting.iou_thr == NMS.iou_thr, then NMS + voting = NMW.
+
+    Args:
+        det_bboxes (Tensor): Remaining boxes after NMS procedure,
+            with shape (k, 4).
+        det_labels (Tensor): The label of remaining boxes, with shape
+            (k, 1),Labels are 0-based.
+        all_bboxes (Tensor): All boxes before the NMS procedure,
+            with shape (num_anchors,4).
+        all_scores (Tensor): The scores of all boxes which is used
+            in the NMS procedure, with shape (num_anchors, num_class)
+        num_classes: The number of classes, i.e., the max labels.
+        all_labels (Tensor): The label of all boxes, with shape
+            (k, 1). Labels are 0-based.
+        iou_thr (float): The IoU threshold of bboxes for voting.
+        score_thr (float): The score threshold of bboxes for voting.
+        class_agnostic (bool): Perform voting class-wisely if False,
+        otherwise perform voting across all bboxes.
+
+    Returns:
+        det_bboxes_voted (Tensor): Re-weighted det_boxes after
+                score voting procedure, with shape (k, 4).
+    """
+
+    def _bbox_voting(bboxes, voting_bboxes, voting_bbox_scores):
+        # IoU tables of shape [num_after_nms, num_before_nms]
+        iou_table = bbox_overlaps(bboxes, voting_bboxes)
+        pos_scores = voting_bbox_scores * (iou_table > iou_thr).type_as(voting_bbox_scores)
+        weights = pos_scores * iou_table
+        weights = weights / weights.sum(dim=1, keepdim=True)
+        voted_bboxes = weights @ voting_bboxes
+        return voted_bboxes
+
+    # %% Filter all boxes that have score less than score_thr
+    pos_score_mask = all_scores > score_thr
+
+    all_bboxes = all_bboxes[pos_score_mask]
+    all_scores = all_scores[pos_score_mask]
+    all_labels = all_labels[pos_score_mask]
+
+    if class_agnostic:
+        det_bboxes_voted = _bbox_voting(det_bboxes, all_bboxes, all_scores)
+    else:
+        # %% Perform score voting class-wisely
+        det_bboxes_voted = []
+        for cls in range(num_classes):
+            pos_cls_mask_all = (all_labels == cls)
+            pos_cls_mask_det = (det_labels == cls)
+            if not pos_cls_mask_all.any():
+                continue
+            _all_scores = all_scores[pos_cls_mask_all]
+            _all_bboxes = all_bboxes[pos_cls_mask_all]
+            _det_bboxes = det_bboxes[pos_cls_mask_det]
+
+            _det_bboxes_voted = _bbox_voting(_det_bboxes, _all_bboxes, _all_scores)
+            det_bboxes_voted.append(_det_bboxes_voted)
+        det_bboxes_voted = torch.cat(det_bboxes_voted, dim=0)
+    return det_bboxes_voted
 
 
 def batched_nmw(bboxes,

@@ -22,6 +22,7 @@ def enable_batch_processing(module_cls):
 MODELS.register_module(module=enable_batch_processing(nn.AdaptiveAvgPool3d))
 MODELS.register_module(module=enable_batch_processing(nn.Flatten))
 MODELS.register_module(module=enable_batch_processing(nn.Unflatten))
+MODELS.register_module(module=enable_batch_processing(nn.MaxPool3d))
 
 
 @MODELS.register_module()
@@ -62,8 +63,9 @@ class TemporalDownSampler(nn.Module):
         self.td_layers = nn.Sequential(*td_layers)
 
     def forward(self, x):
-        assert x.size(-1) >= 2 ** self.num_levels, (f"The temporal length of input {x.size(-1)} is too short"
-                                                    f" for {self.num_levels} levels of down-sampling")
+        # N, C, T, H, W
+        assert x.size(2) >= 2 ** self.num_levels, (f"The temporal length of input {x.size(2)} is too short"
+                                                         f" for {self.num_levels - 1} levels of down-sampling")
         outs = []
         if 0 in self.out_indices:
             outs.append(x)

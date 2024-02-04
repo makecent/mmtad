@@ -1,7 +1,6 @@
 _base_ = [
     'default_runtime.py',
 ]
-custom_imports = dict(imports=['my_modules'], allow_failed_imports=False)
 
 enc_layers = 4
 dec_layers = 4
@@ -138,7 +137,7 @@ frame_interval = 4
 window_size = 960
 window_stride_train = 720  # overlap=0.75
 window_stride_test = 720  # overlap=0.25
-num_clips = 15        # 192/12=16 frame per clip
+num_clips = 15  # 192/12=16 frame per clip
 # window_size = 480
 # window_stride_train = 360  # overlap=0.75
 # window_stride_test = 360  # overlap=0.25
@@ -148,35 +147,25 @@ num_clips = 15        # 192/12=16 frame per clip
 img_shape = (224, 224)
 img_shape_test = (224, 224)
 
-
 train_pipeline = [
-    # dict(type='PseudoFrameDecode'),
-    dict(type='mmaction.RawFrameDecode'),
+    dict(type='PseudoFrameDecode'),
+    # dict(type='mmaction.RawFrameDecode'),
     dict(type='mmaction.Resize', scale=img_shape, keep_ratio=False),
-    # dict(type='mmaction.Resize', scale=(128, -1), keep_ratio=True), # scale images' short-side to 128, keep aspect ratio
-    # dict(type='mmaction.RandomCrop', size=img_shape[0]),
     dict(type='mmaction.Flip', flip_ratio=0.5),
-    dict(type='Pad3D', size=(window_size // frame_interval, *img_shape)),
-    # dict(type='TemporalSegment', num_clips=num_clips),
+    dict(type='Pad3d', size=(window_size // frame_interval, *img_shape)),
+    dict(type='TemporalSegment', num_clips=num_clips),
     dict(type='mmaction.FormatShape', input_format='NCTHW'),
-    dict(type='PackTADInputs',
-         meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
-                    'scale_factor', 'flip', 'flip_direction',
-                    'fps', 'frame_interval', 'window_offset'))
+    dict(type='PackTADInputs', meta_keys=())
 ]
 test_pipeline = [
-    # dict(type='PseudoFrameDecode'),
-    dict(type='mmaction.RawFrameDecode'),
+    dict(type='PseudoFrameDecode'),
+    # dict(type='mmaction.RawFrameDecode'),
     dict(type='mmaction.Resize', scale=img_shape_test, keep_ratio=False),
-    # dict(type='mmaction.Resize', scale=(128, -1), keep_ratio=True),
-    # dict(type='mmaction.CenterCrop', crop_size=img_shape_test),
-    dict(type='Pad3D', size=(window_size // frame_interval, *img_shape_test)),
-    # dict(type='TemporalSegment', num_clips=num_clips),
+    dict(type='Pad3d', size=(window_size // frame_interval, *img_shape_test)),
+    dict(type='TemporalSegment', num_clips=num_clips),
     dict(type='mmaction.FormatShape', input_format='NCTHW'),
     dict(type='PackTADInputs',
-         meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
-                    'scale_factor', 'flip', 'flip_direction',
-                    'fps', 'frame_interval', 'window_offset', 'overlap'))
+         meta_keys=('video_name', 'window_offset', 'fps', 'frame_interval', 'valid_len', 'overlap'))
 ]
 train_dataloader = dict(
     batch_size=1,
@@ -216,19 +205,7 @@ val_dataloader = dict(
         pipeline=test_pipeline))
 test_dataloader = val_dataloader
 
-val_evaluator = dict(
-    type='TH14Metric',
-    metric='mAP',
-    iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
-    nms_cfg=dict(type='nms', iou_thr=0.4))
-test_evaluator = val_evaluator
-
-val_evaluator = dict(
-    type='TH14Metric',
-    merge_windows=True,
-    metric='mAP',
-    iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
-    nms_in_overlap=False,  # True for TadTR
-    nms_cfg=dict(type='nms', iou_thr=0.6))  # 0.4 for TadTR
+val_evaluator = dict(type='TadMetric', merge_windows=True,
+                     iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7], nms_cfg=dict(type='nms', iou_thr=0.6))
 test_evaluator = val_evaluator
 # efficient_conv_bn_eval = ['backbone'] # only work for slowonly

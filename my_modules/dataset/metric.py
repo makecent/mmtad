@@ -1,43 +1,66 @@
 import copy
 from collections import OrderedDict
-from typing import Sequence
+from typing import Optional, Sequence, Union, List
 
 import numpy as np
 import torch
-from mmcv.ops import batched_nms
-from mmdet.evaluation.functional import eval_map, eval_recalls
-from mmdet.evaluation.metrics import VOCMetric
 from mmdet.registry import METRICS
+from mmcv.ops import batched_nms
+from mmdet.evaluation.functional import eval_map
 from mmdet.structures.bbox import bbox_overlaps
+from mmengine.evaluator import BaseMetric
 from mmengine.logging import MMLogger
 from mmengine.structures import InstanceData
 
+from my_modules.task_modules.segments_ops import bbox_voting
+
 
 @METRICS.register_module()
-class TH14Metric(VOCMetric):
+class TadMetric(BaseMetric):
     """
-    We could segment a test video to sub-videos (windows that may overlap) for computation/memory convenience.
-    In this case, we need merge detection results of sub-videos of the same video.
-    We typically perform NMS after merging as these windows may overlap.
-    If you did not segment the video, just skip the merging and NMS and perform NMS in detection head.
+    This metric differ from the MMDetection metrics: this metric could perform post-processing.
+    Specifically, the MMDetection metrics take as input the processed results, by assuming that the post-processing
+    was already done in the model's detection head during inference.
+    We support post-processing in the Metric because TAD models often split the test video into overlapped sub-videos
+    and process them separately.
+    Thus, we merge the detection results of sub-videos from the same video and then perform post-processing globally.
+    Consequently, this metric receive arguments about post-processing, include:
+        (a) the config of NMS (nms_cfg),
+        (b) the score threshold for filtering poor detections (score_thr),
+        (c) the duration threshold for filtering short detections (duration_thr),
+        (d) the maximum number of detections in each video (max_per_video),
+        (e) whether merge the results of windows, i.e., sub-videos of the same video, (merge_windows)
+    In addition to the above common post-processing arguments, we add two extra arguments:
+        (d) the duration threshold for filtering short detections (duration_thr),
+        (e) the flag indicating whether to perform NMS on overlapped regions in testing videos (nms_in_overlap),
+        (f) the config of segment voting (voting_cfg)
+    Example usage:
+    For ActionFormer, as it input the entire test video features to the model, no post-processing is needed here, but
+    all post-processing should be conducted in the model's detection head. merge_windows=False
+    For BasicTAD, as it process cropped windows of test videos, merge_windows=True and NMS config should be set.
     """
+    default_prefix: Optional[str] = 'tad'
 
     def __init__(self,
-                 merge_windows: bool = False,
+                 iou_thrs: Union[float, List[float]] = 0.5,
                  nms_cfg=None,
                  max_per_video: int = -1,
                  score_thr=0.0,
                  duration_thr=0.0,
                  nms_in_overlap=False,
-                 eval_mode: str = 'area',
+                 voting_cfg=None,
+                 merge_windows: bool = False,
                  **kwargs):
-        super().__init__(eval_mode=eval_mode, **kwargs)
-        self.merge_windows = merge_windows
+        super().__init__(**kwargs)
+        self.iou_thrs = [iou_thrs] if isinstance(iou_thrs, float) \
+            else iou_thrs
         self.nms_cfg = nms_cfg
         self.max_per_video = max_per_video
         self.score_thr = score_thr
         self.duration_thr = duration_thr
         self.nms_in_overlap = nms_in_overlap
+        self.voting_cfg = voting_cfg
+        self.merge_windows = merge_windows
 
     def process(self, data_batch: dict, data_samples: Sequence[dict]) -> None:
         """Process one batch of data samples and predictions. The processed
@@ -51,15 +74,16 @@ class TH14Metric(VOCMetric):
         """
         for data_sample in data_samples:
             data = copy.deepcopy(data_sample)
-            # TODO: Need to refactor to support LoadAnnotations
-            gts, dets, gts_ignore = data['gt_instances'], data['pred_instances'], data['ignored_instances']
+            gts, dets = data['gt_instances'], data['pred_instances']
+            gts_ignore = data.get('ignored_instances', dict())
             ann = dict(
-                video_name=data['img_id'],  # for the purpose of future grouping detections of same video.
-                overlap=data.get('overlap', np.empty((0, 2))),  # for the purpose of NMS on overlapped region
+                video_name=data['video_name'],  # for the purpose of future grouping detections of same video.
                 labels=gts['labels'].cpu().numpy(),
                 bboxes=gts['bboxes'].cpu().numpy(),
                 bboxes_ignore=gts_ignore.get('bboxes', torch.empty((0, 4))).cpu().numpy(),
                 labels_ignore=gts_ignore.get('labels', torch.empty(0, )).cpu().numpy())
+
+            ann['overlap'] = data.get('overlap', np.empty((0, 4)))  # for the purpose of NMS on overlapped region
 
             # Convert the format of segment predictions
             # 1. Add window-offset back to convert the results from window-based to video(frames/features)-based
@@ -103,51 +127,30 @@ class TH14Metric(VOCMetric):
         """
         logger: MMLogger = MMLogger.get_current_instance()
         gts, preds = zip(*results)
+
         if self.merge_windows:
             logger.info(f'\n Concatenating the testing results ...')
             gts, preds = self.merge_results_of_same_video(gts, preds)
         if self.nms_cfg is not None:
             logger.info(f'\n Performing NMS ...')
             preds = self.non_maximum_suppression(preds)
-        preds = self.prepare_for_eval(preds)
-        eval_results = OrderedDict()
-        if self.metric == 'mAP':
-            assert isinstance(self.iou_thrs, list)
-            dataset_name = self.dataset_meta['classes']
 
-            mean_aps = []
-            for iou_thr in self.iou_thrs:
-                logger.info(f'\n{"-" * 15}iou_thr: {iou_thr}{"-" * 15}')
-                mean_ap, _ = eval_map(
-                    preds,
-                    gts,
-                    scale_ranges=self.scale_ranges,
-                    iou_thr=iou_thr,
-                    dataset=dataset_name,
-                    logger=logger,
-                    eval_mode=self.eval_mode,
-                    use_legacy_coordinate=False)
-                mean_aps.append(mean_ap)
-                eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 3)
-            eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
-            eval_results.move_to_end('mAP', last=False)
-        elif self.metric == 'recall':
-            # TODO: Currently not checked.
-            gt_bboxes = [ann['bboxes'] for ann in self.annotations]
-            recalls = eval_recalls(
-                gt_bboxes,
-                results,
-                self.proposal_nums,
-                self.iou_thrs,
-                logger=logger,
-                use_legacy_coordinate=False)
-            for i, num in enumerate(self.proposal_nums):
-                for j, iou_thr in enumerate(self.iou_thrs):
-                    eval_results[f'recall@{num}@{iou_thr}'] = recalls[i, j]
-            if recalls.shape[1] > 1:
-                ar = recalls.mean(axis=1)
-                for i, num in enumerate(self.proposal_nums):
-                    eval_results[f'AR@{num}'] = ar[i]
+        preds = self.prepare_for_eval(preds)
+
+        eval_results = OrderedDict()
+        mean_aps = []
+        for iou_thr in self.iou_thrs:
+            logger.info(f'\n{"-" * 15}iou_thr: {iou_thr}{"-" * 15}')
+            mean_ap, _ = eval_map(
+                preds,
+                gts,
+                iou_thr=iou_thr,
+                dataset=self.dataset_meta['classes'],
+                logger=logger)
+            mean_aps.append(mean_ap)
+            eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 3)
+        eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
+        eval_results.move_to_end('mAP', last=False)
         return eval_results
 
     @staticmethod
@@ -186,29 +189,44 @@ class TH14Metric(VOCMetric):
             if self.nms_cfg is not None:
                 if self.nms_in_overlap:
                     if pred_v.in_overlap.sum() > 1:
-                        # Perform NMS over predictions in each overlapped region
-                        # TODO: Improve: 1. NMS globally 2. NMS all overlap regions once 3. NMS threshold 4. NMS type
-                        pred_not_in_overlaps = pred_v[~pred_v.in_overlap.max(-1)[0]]
+                        # Perform NMS on predictions inside overlapped regions of windows
+                        # in_overlap is a binary matrix of shape [num_of_preds, num_of_overlap_regions]
                         pred_in_overlaps = []
                         for i in range(pred_v.in_overlap.shape[1]):
-                            pred_in_overlap = pred_v[pred_v.in_overlap[:, i]]
-                            if len(pred_in_overlap) == 0:
+                            _pred = pred_v[pred_v.in_overlap[:, i]]
+                            if len(_pred) == 0:
                                 continue
-                            bboxes, keep_idxs = batched_nms(pred_in_overlap.bboxes,
-                                                            pred_in_overlap.scores,
-                                                            pred_in_overlap.labels,
-                                                            nms_cfg=self.nms_cfg)
-                            pred_in_overlap = pred_in_overlap[keep_idxs]
-                            pred_in_overlap.scores = bboxes[:, -1]
-                            pred_in_overlaps.append(pred_in_overlap)
+                            bboxes_scores, keep_idxs = batched_nms(_pred.bboxes,
+                                                                   _pred.scores,
+                                                                   _pred.labels,
+                                                                   nms_cfg=self.nms_cfg)
+                            bboxes = bboxes_scores[:, :-1]
+                            scores = bboxes_scores[:, -1]
+                            labels = _pred.labels[keep_idxs]
+                            if self.voting_cfg is not None and len(bboxes) > 0:
+                                bboxes = bbox_voting(bboxes, labels, _pred.bboxes, _pred.scores,
+                                                     len(self.dataset_meta['classes']), _pred.labels,
+                                                     iou_thr=self.voting_cfg.get('iou_thr', 0.01),
+                                                     score_thr=self.voting_cfg.get('score_thr', 0))
+                            _pred = InstanceData(bboxes=bboxes, scores=scores, labels=labels)
+                            pred_in_overlaps.append(_pred)
+                        pred_not_in_overlaps = pred_v[~pred_v.in_overlap.max(-1)[0]]
+                        pred_not_in_overlaps.pop('in_overlap')
                         pred_v = InstanceData.cat(pred_in_overlaps + [pred_not_in_overlaps])
                 else:
-                    bboxes, keep_idxs = batched_nms(pred_v.bboxes,
-                                                    pred_v.scores,
-                                                    pred_v.labels,
-                                                    nms_cfg=self.nms_cfg)
-                    pred_v = pred_v[keep_idxs]
-                    pred_v.scores = bboxes[:, -1]
+                    bboxes_scores, keep_idxs = batched_nms(pred_v.bboxes,
+                                                           pred_v.scores,
+                                                           pred_v.labels,
+                                                           nms_cfg=self.nms_cfg)
+                    bboxes = bboxes_scores[:, :-1]
+                    scores = bboxes_scores[:, -1]
+                    labels = pred_v.labels[keep_idxs]
+                    if self.voting_cfg is not None and len(bboxes) > 0:
+                        bboxes = bbox_voting(bboxes, labels, pred_v.bboxes, pred_v.scores,
+                                             len(self.dataset_meta['classes']), pred_v.labels,
+                                             iou_thr=self.voting_cfg.get('iou_thr', 0.01),
+                                             score_thr=self.voting_cfg.get('score_thr', 0))
+                    pred_v = InstanceData(bboxes=bboxes, scores=scores, labels=labels)
             sort_idxs = pred_v.scores.argsort(descending=True)
             pred_v = pred_v[sort_idxs]
             # keep top-k predictions

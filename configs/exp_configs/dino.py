@@ -109,7 +109,7 @@ model = dict(
 
 )
 val_evaluator = dict(
-    type='TH14Metric',
+    type='TadMetric',
     metric='mAP',
     iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
     nms_cfg=dict(type='nms', iou_thr=0.4),

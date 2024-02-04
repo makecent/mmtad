@@ -1,4 +1,5 @@
 default_scope = 'mmdet'
+custom_imports = dict(imports=['my_modules'], allow_failed_imports=False)
 
 default_hooks = dict(
     timer=dict(type='IterTimerHook'),

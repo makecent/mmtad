@@ -16,7 +16,6 @@ from mmdet.models.utils import multi_apply
 from mmdet.models.utils import unpack_gt_instances
 from mmdet.registry import MODELS
 from mmdet.structures import SampleList
-from mmdet.structures.bbox import bbox_overlaps
 from mmdet.structures.bbox import (get_box_tensor, get_box_wh,
                                    scale_boxes)
 from mmdet.utils import (ConfigType, OptInstanceList, reduce_mean)
@@ -25,8 +24,9 @@ from mmengine.config import ConfigDict
 from mmengine.structures import InstanceData
 from torch import Tensor
 from torch.nn import functional as F
-from mmdet.models.task_modules.prior_generators import MlvlPointGenerator
+
 from my_modules.layers.actionformer_layers import MaskedConv1d, MaskedConv1dModule
+from my_modules.task_modules.segments_ops import bbox_voting
 
 INF = 1e8
 
@@ -146,17 +146,17 @@ class ActionFormerHead(AnchorFreeHead):
             for reg_layer in self.reg_convs:
                 reg_feat, _ = reg_layer(reg_feat, masks)
             bbox_offset, _ = self.conv_reg(reg_feat, masks)
-        # %% rescale the bbox_offset
+            # %% rescale the bbox_offset
             bbox_offset = scale(bbox_offset).float().clamp(min=0)
             if not self.training:
                 # as we use (1, t) to mimic the (h, w), the strides on width dimension are used for scaling
                 # note that the format of strides used in mmdet is (w, h), not (h, w).
                 bbox_offset *= stride[0]
-        # %% filter out invalid positions
+            # %% filter out invalid positions
             # logits of padded positions (masks = 0) are set to -20, making their scores close to 0 after sigmoid
             # during prediction, these prediction on padded positions will be filtered out by score thresholding
             cls_score = cls_score * masks - 20 * ~masks
-        # %% unsqueeze [N, C, T] to mimic [N C H=1 W=T] and pack
+            # %% unsqueeze [N, C, T] to mimic [N C H=1 W=T] and pack
             cls_score = cls_score.unsqueeze(2)
             bbox_offset = bbox_offset.unsqueeze(2)
             # (left, right) to (left, top=0, right, bottom=0)
@@ -499,10 +499,11 @@ class ActionFormerHead(AnchorFreeHead):
             det_labels = results.labels[keep_idxs]
             # %% perform score voting
             if cfg.get('with_score_voting', False) and len(det_bboxes) > 0:
-                det_bboxes = self.score_voting(det_bboxes, det_labels,
-                                               results.bboxes, results.scores,
-                                               iou_thr=cfg.voting_iou_thr,
-                                               score_thr=cfg.voting_score_thr)
+                det_bboxes = bbox_voting(self.cls_out_channels,
+                                         det_bboxes, det_labels,
+                                         results.bboxes, results.scores,
+                                         iou_thr=cfg.voting_iou_thr,
+                                         score_thr=cfg.voting_score_thr)
             results = InstanceData()
             results.bboxes = det_bboxes
             results.scores = det_scores
@@ -513,67 +514,3 @@ class ActionFormerHead(AnchorFreeHead):
             results = sorted_results[:cfg.max_per_img]
 
         return results
-
-    def score_voting(self,
-                     det_bboxes: Tensor, det_labels: Tensor,
-                     all_bboxes: Tensor, all_scores: Tensor,
-                     iou_thr: float = 0.01,
-                     score_thr: float = 0.0,
-                     class_agnostic: bool = False) -> Tensor:
-        """Implementation of score voting method works on each remaining boxes
-        after NMS procedure.
-
-        Args:
-            det_bboxes (Tensor): Remaining boxes after NMS procedure,
-                with shape (k, 4).
-            det_labels (Tensor): The label of remaining boxes, with shape
-                (k, 1),Labels are 0-based.
-            all_bboxes (Tensor): All boxes before the NMS procedure,
-                with shape (num_anchors,4).
-            all_scores (Tensor): The scores of all boxes which is used
-                in the NMS procedure, with shape (num_anchors, num_class)
-            iou_thr (float): The IoU threshold of bboxes for voting.
-            score_thr (float): The score threshold of bboxes for voting.
-            class_agnostic (bool): Perform voting class-wisely if False,
-            otherwise perform voting across all bboxes.
-
-        Returns:
-            det_bboxes_voted (Tensor): Re-weighted det_boxes after
-                    score voting procedure, with shape (k, 4).
-        """
-
-        def bbox_voting(bboxes, voting_bboxes, voting_bbox_scores):
-            # IoU tables of shape [num_after_nms, num_before_nms]
-            iou_table = bbox_overlaps(bboxes, voting_bboxes)
-            pos_scores = voting_bbox_scores * (iou_table > iou_thr).astype(voting_bbox_scores)
-            weights = pos_scores * iou_table
-            weights = weights / weights.sum(dim=1, keepdim=True)
-            voted_bboxes = weights @ voting_bboxes
-            return voted_bboxes
-
-        # %% Filter all boxes that have score less than score_thr
-        pos_score_mask = all_scores > score_thr
-        pos_score_inds, pos_score_labels = pos_score_mask.nonzero()
-
-        all_bboxes = all_bboxes[pos_score_inds]
-        all_scores = all_scores[pos_score_inds]
-        all_labels = pos_score_labels
-
-        if class_agnostic:
-            det_bboxes_voted = bbox_voting(det_bboxes, all_bboxes, all_scores)
-        else:
-            # %% Perform score voting class-wisely
-            det_bboxes_voted = []
-            for cls in range(self.cls_out_channels):
-                pos_cls_mask_all = (all_labels == cls)
-                pos_cls_mask_det = (det_labels == cls)
-                if not pos_cls_mask_all.any():
-                    continue
-                _all_scores = all_scores[pos_cls_mask_all]
-                _all_bboxes = all_bboxes[pos_cls_mask_all]
-                _det_bboxes = det_bboxes[pos_cls_mask_det]
-
-                _det_bboxes_voted = bbox_voting(_det_bboxes, _all_bboxes, _all_scores)
-                det_bboxes_voted.append(_det_bboxes_voted)
-            det_bboxes_voted = torch.cat(det_bboxes_voted, dim=0)
-        return det_bboxes_voted

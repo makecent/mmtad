@@ -1,15 +1,16 @@
 import random
 from typing import Dict, Optional, Tuple, List, Union
 
+import mmcv
 import numpy as np
-from mmaction.datasets.transforms import RawFrameDecode
 from mmcv.transforms import to_tensor
 from mmcv.transforms.base import BaseTransform
+from mmdet.datasets.transforms import PhotoMetricDistortion
 from mmdet.registry import TRANSFORMS
 from mmdet.structures import DetDataSample
 from mmengine.structures import InstanceData
 
-from my_modules.task_modules.segments_ops import segment_overlaps
+from my_modules.task_modules.segments_ops import segment_overlaps, convert_1d_to_2d_bboxes
 
 
 @TRANSFORMS.register_module()
@@ -20,8 +21,8 @@ class LoadFeature(BaseTransform):
             feat = results['feat']
         else:
             feat = np.load(results['feat_path'])
-        feat_start, feat_len = results['feat_start'], results['feat_len']
-        results['feat'] = feat[feat_start: feat_start + feat_len]
+        feat_start, valid_len = results['feat_start'], results['valid_len']
+        results['feat'] = feat[feat_start: feat_start + valid_len]
 
         return results
 
@@ -33,23 +34,23 @@ class PadFeature(BaseTransform):
                  pad_length: int = None,
                  pad_length_divisor: int = 1,
                  pad_value=0.0):
-        assert pad_length is None or pad_length % pad_length_divisor == 0, "pad_length must be divisible by pad_size_divisor"
+        assert pad_length is None or pad_length % pad_length_divisor == 0, \
+            "pad_length must be divisible by pad_size_divisor"
         self.pad_length = pad_length
         self.pad_length_divisor = pad_length_divisor
         self.pad_value = pad_value
 
     def transform(self, results: Dict) -> Optional[Union[Dict, Tuple[List, List]]]:
-        feat, feat_len = results['feat'], results['feat_len']
-        assert len(feat) == feat_len
+        feat, valid_len = results['feat'], results['valid_len']
+        assert len(feat) == valid_len
 
         # Case 1: Pad to specified length
-        if self.pad_length is not None and feat_len < self.pad_length:
-            feat = np.pad(feat, ((0, self.pad_length - feat_len), (0, 0)), constant_values=self.pad_value)
-            feat_len = self.pad_length
+        if self.pad_length is not None and valid_len < self.pad_length:
+            feat = np.pad(feat, ((0, self.pad_length - valid_len), (0, 0)), constant_values=self.pad_value)
 
-        # Case 2 & 3: Pad to make divisible (applies when feat_len >= pad_length or only divisible is set)
-        if feat_len % self.pad_length_divisor != 0:
-            pad_amount = self.pad_length_divisor - (feat_len % self.pad_length_divisor)
+        # Case 2 & 3: Pad to make divisible (applies when len(feat) >= pad_length or only divisible is set)
+        if len(feat) % self.pad_length_divisor != 0:
+            pad_amount = self.pad_length_divisor - (len(feat) % self.pad_length_divisor)
             feat = np.pad(feat, ((0, pad_amount), (0, 0)), constant_values=self.pad_value)
 
         results['feat'] = feat
@@ -86,17 +87,14 @@ class RandomSlice(BaseTransform):
 
     def transform(self,
                   results: Dict, ) -> Optional[Union[Dict, Tuple[List, List]]]:
-        if 'feat_len' in results:
-            max_len = results['feat_len']
-            # Convert the format of segment annotations from second-unit to feature-unit.
-            # feat_stride tells that we extract one feature for every 'feat_stride' frames
-            action_segments = results['segments'] * results['fps'] / results['feat_stride']
+        if 'valid_len' in results:
+            max_len = results['valid_len']
         elif 'total_frames' in results:
             max_len = results['total_frames']
-            # Convert the format of segment annotations from second-unit to frame-unit.
-            action_segments = results['segments'] * results['fps']
         else:
             raise NotImplementedError
+
+        action_segments = results['segments']
 
         # Conduct random slicing
         if max_len > self.window_size:
@@ -127,22 +125,26 @@ class RandomSlice(BaseTransform):
         else:
             raise RuntimeError(
                 f"Could not found a valid crop after {self.attempts} attempts, "
-                f"you may need modify the window size or number of attempts")
+                f"you may need increase the window size or number of attempts")
 
         # Convert the segment annotations to be relative to the cropped window.
         action_segments = action_segments[valid_mask].clip(min=start_idx, max=end_idx) - start_idx
-        results['segments'] = action_segments
-        results['labels'] = results['labels'][valid_mask]
-        if 'gt_ignore_flags' in results:
-            results['gt_ignore_flags'] = results['gt_ignore_flags'][valid_mask]
 
-        if 'feat_len' in results:
+        if 'valid_len' in results:
             results['feat_start'] = start_idx
-            results['feat_len'] = crop_size
+            results['valid_len'] = crop_size
+            results['segments'] = action_segments
         elif 'total_frames' in results:
             results['frame_inds'] = np.arange(start_idx, end_idx, step=self.frame_interval)
             results['frame_interval'] = self.frame_interval
+            results['valid_len'] = len(results['frame_inds'])
             results['clip_len'] = crop_size // self.frame_interval
+            results['segments'] = action_segments / self.frame_interval
+
+        results['segments'] = action_segments
+        results['labels'] = results['labels'][valid_mask]
+        if 'ignore_flags' in results:
+            results['ignore_flags'] = results['ignore_flags'][valid_mask]
 
         return results
 
@@ -178,51 +180,45 @@ class PackTADInputs(BaseTransform):
     """
 
     def __init__(self,
-                 meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
-                            'scale_factor', 'flip', 'flip_direction')):
+                 meta_keys=('video_name', 'valid_len')):
         self.meta_keys = meta_keys
 
     @staticmethod
-    def map_to_mmdet(results: dict) -> dict:
-        """
-        Modify the keys/values to be consistent with mmdet
-        Args:
-            results:
-
-        Returns:
-
-        """
-
-        # 'segments' to 'gt_bboxes' and [x1 x2] to [x1 y1 x2 y2]
-        gt_bboxes = np.insert(results['segments'], 2, 0.9, axis=-1)
-        gt_bboxes = np.insert(gt_bboxes, 1, 0.1, axis=-1)
-        results['gt_bboxes'] = gt_bboxes
-        if 'overlap' in results and results['overlap'].size > 0:
-            overlap = np.insert(results['overlap'], 2, 0.9, axis=-1)
-            overlap = np.insert(overlap, 1, 0.1, axis=-1)
-            results['overlap'] = overlap
-
-        results.update({'gt_bboxes_labels': results.pop('labels')})
-        results.update({"img_id": results.pop("video_name")})
-        if 'feat' in results:
+    def map_to_mmdet(packed_results: dict, results: dict) -> dict:
+        inputs, data_sample = packed_results['inputs'], packed_results['data_samples']
+        # reformat input data and shapes
+        if inputs.ndim == 2:
             # from [T, C] to [C, 1, T], mimic the [C, H, W]
-            results.update({'img': results.pop('feat').T[:, np.newaxis, :]})
-            results.update({'ori_shape': (1, results.pop('feat_len'))})
-            results.update({'img_shape': results['ori_shape']})  # for ActionFormer
-            # results.update({'img_shape': (1, results['img'].shape[-1])})  #  for DITA
-
+            inputs_chw = inputs.unsqueeze(0).permute(2, 0, 1).contiguous()
+            packed_results['inputs'] = inputs_chw
+            temporal_len = inputs_chw.size(2)
+            # data_sample.set_metainfo(dict(img_shape=(1, inputs_chw.size(-1))))  # for DITA
         else:
-            assert 'imgs' in results
-            results.update({'img': results.pop('imgs')})
-            results.update({'ori_shape': (1, results.pop('valid_len'))})
-            results.update({'img_shape': (1, results['img'].shape[2] * results['num_clips'])})
+            assert inputs.ndim == 5   # MCTHW   M = num_clips x num_crops
+            temporal_len = inputs.size(2) * results['num_clips']
+        # %% reformat shape to (1, T) from (H, W) for temporal detection, these values could be used for
+        # computing padding mask or clipping the geographical range to detection results, etc.
+        data_sample.set_metainfo(dict(ori_shape=(1, results['valid_len'])))
+        data_sample.set_metainfo(dict(img_shape=(1, results['valid_len'])))
+        data_sample.set_metainfo(dict(batch_input_shape=(1, temporal_len)))
+        data_sample.set_metainfo(dict(pad_shape=(1, temporal_len)))
+        # %% add some keys that may be used
+        data_sample.set_metainfo(dict(scale_factor=(1.0, 1.0)))
+        data_sample.set_metainfo(dict(flip=False))
+        data_sample.set_metainfo(dict(flip_direction=None))
+        # %% reformat gt_instances from (x1, x2) to (x1, y1=0.1, x2, y2=0.9)
+        data_sample.gt_instances.bboxes = convert_1d_to_2d_bboxes(data_sample.gt_instances.segments)
+        data_sample.ignored_instances.bboxes = convert_1d_to_2d_bboxes(data_sample.ignored_instances.segments)
+        # %% reformat overlaps
+        if 'overlap' in data_sample and data_sample.overlap.size > 0:
+            overlap_2d = np.insert(data_sample.pop('overlap'), 2, 0.9, axis=-1)
+            overlap_2d = np.insert(overlap_2d, 1, 0.1, axis=-1)
+            data_sample.set_metainfo(dict(overlap=overlap_2d))
+        # # %% reformat video_name to img_id
+        # if 'video_name' in data_sample:
+        #     data_sample.set_metainfo(dict(img_id=data_sample.video_name))
 
-        results['img_path'] = ''
-        results['scale_factor'] = [1.0, 1.0]  # The second depends on if the backbone scale down temporal length
-        results['flip'] = False
-        results['flip_direction'] = None
-
-        return results
+        return packed_results
 
     def transform(self, results: dict) -> dict:
         """Method to pack the input data.
@@ -237,28 +233,26 @@ class PackTADInputs(BaseTransform):
             - 'data_sample' (obj:`DetDataSample`): The annotation info of the
                 sample.
         """
-        results = self.map_to_mmdet(results)
         packed_results = dict()
-        img = results['img']
-        assert len(img.shape) == 5 or len(img.shape) == 3  # M, C, T, H, W or C, 1, T, for video frames or features
-        if not img.flags.c_contiguous:
-            img = np.ascontiguousarray(img)
-            img = to_tensor(img)
+        data = results['feat'] if 'feat' in results else results['imgs']
+        if not data.flags.c_contiguous:
+            data = np.ascontiguousarray(data)
+            data = to_tensor(data)
         else:
-            img = to_tensor(img).contiguous()
+            data = to_tensor(data).contiguous()
 
-        packed_results['inputs'] = img
+        packed_results['inputs'] = data
 
         data_sample = DetDataSample()
         instance_data = InstanceData()
         ignore_instance_data = InstanceData()
 
-        valid_idx = np.where(results['gt_ignore_flags'] == 0)[0]
-        ignore_idx = np.where(results['gt_ignore_flags'] == 1)[0]
-        instance_data['bboxes'] = to_tensor(results['gt_bboxes'][valid_idx])
-        instance_data['labels'] = to_tensor(results['gt_bboxes_labels'][valid_idx])
-        ignore_instance_data['bboxes'] = to_tensor(results['gt_bboxes'][ignore_idx])
-        ignore_instance_data['labels'] = to_tensor(results['gt_bboxes_labels'][ignore_idx])
+        valid_idx = np.where(results['ignore_flags'] == 0)[0]
+        ignore_idx = np.where(results['ignore_flags'] == 1)[0]
+        instance_data['segments'] = to_tensor(results['segments'][valid_idx])
+        instance_data['labels'] = to_tensor(results['labels'][valid_idx])
+        ignore_instance_data['segments'] = to_tensor(results['segments'][ignore_idx])
+        ignore_instance_data['labels'] = to_tensor(results['labels'][ignore_idx])
 
         data_sample.gt_instances = instance_data
         data_sample.ignored_instances = ignore_instance_data
@@ -268,6 +262,7 @@ class PackTADInputs(BaseTransform):
             assert key in results, f'`{key}` is not found in `results`, ' \
                                    f'the valid keys are {list(results)}.'
             img_meta[key] = results[key]
+
         data_sample.set_metainfo(img_meta)
         # NOTE the batched image size information may be useful, e.g.
         # in DETR, this is needed for the construction of masks, which is
@@ -275,13 +270,8 @@ class PackTADInputs(BaseTransform):
         # pad_shape: the shape after padding to be divisible by an instant
         # batch_input_shape: the shape after padding to be divisible by an instant and padding to the max sample shape
 
-        data_sample.set_metainfo({
-            'batch_input_shape': tuple(results['img_shape']),
-            'pad_shape': tuple(results['img_shape'])
-        })
-
         packed_results['data_samples'] = data_sample
-
+        packed_results = self.map_to_mmdet(packed_results, results)
         return packed_results
 
     def __repr__(self) -> str:
@@ -291,10 +281,14 @@ class PackTADInputs(BaseTransform):
 
 
 @TRANSFORMS.register_module()
-class PseudoFrameDecode(RawFrameDecode):
+class PseudoFrameDecode(BaseTransform):
+
+    def __init__(self, size=(224, 224)):
+        super().__init__()
+        self.size = size
 
     def transform(self, results: Dict):
-        imgs = [np.random.rand(160, 160, 3).astype(np.float32) for i in results['frame_inds']]
+        imgs = [np.random.rand(*self.size, 3).astype(np.float32) for i in results['frame_inds']]
         results['imgs'] = imgs
         results['original_shape'] = imgs[0].shape[:2]
         results['img_shape'] = imgs[0].shape[:2]
@@ -330,7 +324,7 @@ class TemporalSegment(BaseTransform):
 
 
 @TRANSFORMS.register_module()
-class Pad3D(BaseTransform):
+class Pad3d(BaseTransform):
     """Pad video frames.
 
     There are two padding modes: (1) pad to a fixed size and (2) pad to the
@@ -386,7 +380,7 @@ class Pad3D(BaseTransform):
         """
         pad_shape = tuple(
             int(np.ceil(shape / divisor)) * divisor for shape in img.shape[:-1])
-        return Pad3D.impad(img, pad_shape, pad_value)
+        return Pad3d.impad(img, pad_shape, pad_value)
 
     def transform(self, results):
         """Call function to pad images.
@@ -406,7 +400,7 @@ class Pad3D(BaseTransform):
         else:
             raise AssertionError("Either 'size' or 'size_divisor' need to be set, but both None")
         results['imgs'] = list(padded_imgs)  # change back to mmaction-style (list of) imgs
-        results['pad_tsize'] = padded_imgs.shape[0]
+        results['pad_len'] = padded_imgs.shape[0]
 
         return results
 
@@ -415,4 +409,145 @@ class Pad3D(BaseTransform):
         repr_str += f'(size={self.size}, '
         repr_str += f'size_divisor={self.size_divisor}, '
         repr_str += f'pad_value={self.pad_value})'
+        return repr_str
+
+
+@TRANSFORMS.register_module()
+class PhotoMetricDistortion3d(PhotoMetricDistortion):
+
+    def __init__(self, prob=0.5, *args, **kwargs):
+        # prob is the probability that the entire process is skipped
+        self.prob = prob
+        super().__init__(*args, **kwargs)
+
+    def transform(self, results):
+        """Call function to perform photometric distortion on images.
+
+        Args:
+            results (dict): Result dict from loading pipeline.
+
+        Returns:
+            dict: Result dict with images distorted.
+        """
+        if random.uniform(0, 1) <= self.prob:
+            imgs = np.array(results['imgs']).astype(np.float32)
+
+            (mode, brightness_flag, contrast_flag, saturation_flag, hue_flag,
+             swap_flag, delta_value, alpha_value, saturation_value, hue_value,
+             swap_value) = self._random_flags()
+
+            # random brightness
+            if brightness_flag:
+                imgs += delta_value
+
+            # mode == 0 --> do random contrast first
+            # mode == 1 --> do random contrast last
+            if mode == 1:
+                if contrast_flag:
+                    imgs *= alpha_value
+
+            # convert color from BGR to HSV
+            imgs = np.array([mmcv.image.bgr2hsv(img) for img in imgs])
+
+            # random saturation
+            if saturation_flag:
+                imgs[..., 1] *= saturation_value
+                # For image(type=float32), after convert bgr to hsv by opencv,
+                # valid saturation value range is [0, 1]
+                if saturation_value > 1:
+                    imgs[..., 1] = imgs[..., 1].clip(0, 1)
+
+            # random hue
+            if hue_flag:
+                imgs[..., 0] += hue_value
+                imgs[..., 0][imgs[..., 0] > 360] -= 360
+                imgs[..., 0][imgs[..., 0] < 0] += 360
+
+            # convert color from HSV to BGR
+            imgs = np.array([mmcv.image.hsv2bgr(img) for img in imgs])
+
+            # random contrast
+            if mode == 0:
+                if contrast_flag:
+                    imgs *= alpha_value
+
+            # randomly swap channels
+            if swap_flag:
+                imgs = imgs[..., swap_value]
+
+            results['imgs'] = list(imgs)  # change back to mmaction-style (list of) imgs
+        return results
+
+    def __repr__(self):
+        repr_str = self.__class__.__name__
+        repr_str += f'(\nbrightness_delta={self.brightness_delta},\n'
+        repr_str += 'contrast_range='
+        repr_str += f'{(self.contrast_lower, self.contrast_upper)},\n'
+        repr_str += 'saturation_range='
+        repr_str += f'{(self.saturation_lower, self.saturation_upper)},\n'
+        repr_str += f'hue_delta={self.hue_delta})'
+        return repr_str
+
+
+@TRANSFORMS.register_module()
+class Rotate3d(BaseTransform):
+    """Spatially rotate images.
+
+    Args:
+        limit (int, list or tuple): Angle range, (min_angle, max_angle).
+        interpolation (str): Interpolation method, accepted values are
+            "nearest", "bilinear", "bicubic", "area", "lanczos".
+            Default: bilinear
+        border_mode (str): Border mode, accepted values are "constant",
+            "isolated", "reflect", "reflect_101", "replicate", "transparent",
+            "wrap". Default: constant
+        border_value (int): Border value. Default: 0
+    """
+
+    def __init__(self,
+                 limit,
+                 interpolation='bilinear',
+                 border_mode='constant',
+                 border_value=0,
+                 prob=0.5):
+        if isinstance(limit, int):
+            limit = (-limit, limit)
+        self.limit = limit
+        self.interpolation = interpolation
+        self.border_mode = border_mode
+        self.border_value = border_value
+        self.prob = prob
+
+    def transform(self, results):
+        """Call function to random rotate images.
+
+        Args:
+            results (dict): Result dict from loading pipeline.
+
+        Returns:
+            dict: Spatially rotated results.
+        """
+
+        if random.uniform(0, 1) <= self.prob:
+            angle = random.uniform(*self.limit)
+            imgs = [
+                mmcv.image.imrotate(
+                    img,
+                    angle=angle,
+                    interpolation=self.interpolation,
+                    border_mode=self.border_mode,
+                    border_value=self.border_value) for img in results['imgs']]
+
+            results['imgs'] = [np.ascontiguousarray(img) for img in imgs]
+
+        return results
+
+    def __repr__(self):
+        repr_str = self.__class__.__name__
+        repr_str += f'(limit={self.limit},'
+        repr_str += f'interpolation={self.interpolation},'
+        repr_str += f'border_mode={self.border_mode},'
+        repr_str += f'border_value={self.border_value},'
+        repr_str += f'p={self.prob})'
+
         return repr_str
