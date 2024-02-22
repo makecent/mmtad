@@ -18,21 +18,45 @@ The repository is still under construction and the readme.md need to be updated.
 
 
 # Prepare the environment
+## Create a mmtad environment
 ```terminal
 conda create -n mmengine python=3.8 -y
 conda activate mmengine
-# the version of pytorch is flexible (>=2.0 is recommended), you may install pytorch depending on your machine.
-conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia -y
-pip install -U openmim fvcore future tensorboard pytorchvideo
+conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
+pip install openmim
 mim install mmengine mmdet mmaction2
+pip install fvcore future tensorboard pytorchvideo timm
 ```
-Add the root directory to the Python path, otherwise you need add `PYTHONPATH=$PWD:$PYTHONPATH` before every run:
+You need pay attention to the version compatibility of PyTorch, CUDA and NVIDIA driver 
+[link1](https://www.nvidia.com/download/index.aspx), [link2](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html), [link3](https://pytorch.org/get-started/previous-versions/). 
+
+
+You need pay attention to the installation message of `mmcv` and check if it is something like:
+```terminal
+Collecting mmcv
+Downloading https://download.openmmlab.com/mmcv/dist/cu102/torch1.8.0/mmcv-2.0.0-cp38-cp38-manylinux1_x86_64.whl
+```
+or 
+```terminal
+Collecting mmcv
+Downloading mmcv-2.1.0.tar.gz (471 kB)
+```
+The former indicates that there is a **pre-built** version of `mmcv`  corresponding to the PyTorch and CUDA installed in the conda environment. And in this case, everything should just go fine.
+
+While if it's the second case, i.e., it installed `mmcv` using a `.tar.gz` file. It means that there was NO proper pre-build `mmcv` and it was **building the mmcv from the source**. 
+In this case, some tricky errors may appear. For example, it could raise a `CUDA version mismatch` error if your versions of the system-wide CUDA and the conda-wide CUDA are mismatched. 
+You could check the available pre-built `mmcv` in [this page](https://mmcv.readthedocs.io/en/latest/get_started/installation.html#install-with-pip).
+
+
+## Add current path into the Python path
+Add the root directory to the Python path, otherwise you need add `PYTHONPATH=$PWD:$PYTHONPATH` before every command:
 ```terminal
 cd DITA
 export PYTHONPATH=$PWD:$PYTHONPATH
 ```
 Note that once you close the terminal, you need re-run the above command as it is a temporary setting.
 
+## A recipe of commands
 Running commands you need to know (refer to [openmim](https://github.com/open-mmlab/mim) for more details):
 
 Training command:

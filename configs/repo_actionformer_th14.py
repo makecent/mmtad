@@ -64,10 +64,7 @@ param_scheduler = [
         eta_min=1e-8,
         by_epoch=True,
         convert_to_iter_based=True)]
-train_cfg = dict(
-    type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=1)
-val_cfg = dict(type='ValLoop')
-test_cfg = dict(type='TestLoop')
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=5)
 
 # dataset settings
 dataset_type = 'Thumos14FeatDataset'
