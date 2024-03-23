@@ -85,8 +85,7 @@ class DETR_TADHead(DETRHead):
     def _init_layers(self) -> None:
         """Initialize layers of the transformer head."""
         super()._init_layers()
-        self.fc_reg = Pseudo4DRegLinear(self.embed_dims)
-
+        self.fc_reg = Pseudo4DRegLinear(self.embed_dims, delta=False)
 
     def init_weights(self) -> None:
         """Initialize weights of the Deformable DETR head."""

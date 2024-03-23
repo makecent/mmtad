@@ -140,8 +140,9 @@ class RandomSlice(BaseTransform):
             results['valid_len'] = len(results['frame_inds'])
             results['clip_len'] = crop_size // self.frame_interval
             results['segments'] = action_segments / self.frame_interval
+        else:
+            raise NotImplementedError
 
-        results['segments'] = action_segments
         results['labels'] = results['labels'][valid_mask]
         if 'ignore_flags' in results:
             results['ignore_flags'] = results['ignore_flags'][valid_mask]

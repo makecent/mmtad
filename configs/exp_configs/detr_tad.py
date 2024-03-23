@@ -130,11 +130,11 @@ model = dict(
         embed_dims=256,
         sync_cls_avg_factor=True,
         loss_cls=dict(
-            type='CrossEntropyLoss',
-            bg_cls_weight=0.1,
-            use_sigmoid=False,
-            loss_weight=1.0,
-            class_weight=1.0),
+            type='FocalLoss',
+            use_sigmoid=True,
+            gamma=2.0,
+            alpha=0.25,
+            loss_weight=1.0),
         loss_bbox=dict(type='L1Loss', loss_weight=5.0),
         loss_iou=dict(type='GIoU1dLoss', loss_weight=2.0)),
     # training and testing settings
