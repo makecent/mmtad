@@ -51,9 +51,10 @@ You could check the available pre-built `mmcv` in [this page](https://mmcv.readt
 ## Add current path into the Python path
 Add the root directory to the Python path, otherwise you need add `PYTHONPATH=$PWD:$PYTHONPATH` before every command:
 ```terminal
-cd DITA
+cd mmtad
 export PYTHONPATH=$PWD:$PYTHONPATH
-```
+# $env:PYTHONPATH += ";$pwd" for Windows
+``` 
 Note that once you close the terminal, you need re-run the above command as it is a temporary setting.
 
 ## A recipe of commands

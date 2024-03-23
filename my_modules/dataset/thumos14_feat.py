@@ -1,6 +1,6 @@
+import os.path as osp
 import warnings
 from copy import deepcopy
-import os.path as osp
 
 import mmengine
 import numpy as np
@@ -28,7 +28,8 @@ class Thumos14FeatDataset(BaseDetDataset):
                  skip_wrong=False,  # skip videos that are wrong annotated
                  pre_load_feat: bool = False,  # whether pre-load all the features/feature windows to cpu memory
                  tadtr_style: bool = True,  # whether slice the feature in a TadTR style.
-                 iof_thr: float = 0.75,  # The Intersection over Foreground (IoF) threshold used to filter sliding windows.
+                 iof_thr: float = 0.75,
+                 # The Intersection over Foreground (IoF) threshold used to filter sliding windows.
                  window_size: int = None,  # the window size of sliding window.
                  window_stride: int = None,  # the window stride of sliding window.
                  **kwargs):
@@ -138,7 +139,9 @@ class Thumos14FeatDataset(BaseDetDataset):
 
                     data_list.append(deepcopy(data_info))
         assert len(data_list) > 0
-        print_log(f"number of feature windows:\t {len(data_list)}", logger=MMLogger.get_current_instance())
+        print_log(
+            f"Number of feature windows found in the {'test' if self.test_mode else 'training'} split:\t {len(data_list)} ",
+            logger=MMLogger.get_current_instance())
         return data_list
 
     def parse_labels(self, video_name, video_info):

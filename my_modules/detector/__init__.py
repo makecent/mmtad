@@ -1,3 +1,3 @@
 from .dita import *
-from .dino1d import *
+from .detr_tad import *
 from .tadtr import *
