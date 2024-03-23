@@ -120,3 +120,26 @@ Test (2 GPUs as an example):
 ```terminal
 mim train mmaction configs/repo_actionformer_th14.py --gpus 2 --launcher pytorch --checkpoint work_dirs/repo_actionformer_th14/latest.pth --cfg-options train_dataloader.batch_size=1
 ```
+# Reproduce BasicTAD(TAD)
+```terminal
+mmaction2  1.2.0      https://github.com/open-mmlab/mmaction2
+mmcv       2.1.0      https://github.com/open-mmlab/mmcv
+mmdet      3.3.0      https://github.com/open-mmlab/mmdetection
+mmengine   0.10.3     https://github.com/open-mmlab/mmengine
+```
+## THUMOS14 with I3D features
+### Prepare data
+Download the pre-extracted features from the [official repository](https://github.com/happyharrycn/actionformer_release/)
+and put them in `my_data/thumos14/features/thumos_feat_ActionFormer_16input_4stride_2048/i3d_features`. We use annotation files created by ourselves.
+
+### Train (including validation)
+Train (2 GPUs as an example):
+```terminal
+mim train mmaction configs/repo_actionformer_th14.py --gpus 2 --launcher pytorch --cfg-options train_dataloader.batch_size=1
+```
+We change batch_size to 1 (which is 2 by default) here as two GPUs are used for training. The final batch_size is still 2, following the official training.
+### Test
+Test (2 GPUs as an example):
+```terminal
+mim train mmaction configs/repo_actionformer_th14.py --gpus 2 --launcher pytorch --checkpoint work_dirs/repo_actionformer_th14/latest.pth --cfg-options train_dataloader.batch_size=1
+```
