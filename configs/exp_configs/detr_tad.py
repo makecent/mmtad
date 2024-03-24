@@ -2,10 +2,10 @@ _base_ = [
     '../default_runtime.py',
 ]
 #%% 1. Optimizer settings
-optim_wrapper = dict(optimizer=dict(type='AdamW', lr=1e-4, weight_decay=0.05),
+optim_wrapper = dict(optimizer=dict(type='AdamW', lr=1e-4, weight_decay=0.0001),
                      clip_grad=dict(max_norm=1.0, norm_type=2))
 # learning policy
-max_epochs = 30
+max_epochs = 100
 param_scheduler = [
     # Linear learning rate warm-up scheduler
     dict(type='LinearLR',
@@ -38,7 +38,8 @@ test_pipeline = [
     dict(type='LoadFeature'),
     dict(type='PadFeature', pad_length=max_seq_len, pad_length_divisor=32 * (19 // 2) * 2),
     dict(type='PackTADInputs',
-         meta_keys=('video_name', 'fps', 'feat_stride', 'valid_len'))]
+         # meta_keys=('video_name', 'fps', 'feat_stride', 'valid_len'))]
+         meta_keys=('video_name', 'fps', 'feat_stride', 'valid_len', 'window_offset', 'overlap'))]
 train_dataloader = dict(
     batch_size=2,
     num_workers=2,
@@ -66,7 +67,9 @@ val_dataloader = dict(
         data_root=data_root,
         ann_file='annotations/louis/thumos14_test.json',
         feat_stride=4,
-        pre_load_feat=True,
+        # pre_load_feat=True,
+        window_size=2304,
+        window_stride=2304,
         skip_short=False,
         skip_wrong=True,
         data_prefix=dict(feat='features/thumos_feat_ActionFormer_16input_4stride_2048/i3d_features'),
@@ -78,7 +81,7 @@ test_dataloader = val_dataloader
 #%% 3. Model settings
 model = dict(
     type='DETR_TAD',
-    num_queries=200,
+    num_queries=100,
     data_preprocessor=dict(type='DetDataPreprocessor'),
     backbone=dict(type='PseudoBackbone', multi_scale=True),
     neck=dict(
@@ -90,7 +93,7 @@ model = dict(
         norm_cfg=dict(type='GN', num_groups=32),
         num_outs=1),
     encoder=dict(
-        num_layers=6,
+        num_layers=4,
         layer_cfg=dict(  # DetrTransformerEncoderLayer
             self_attn_cfg=dict(  # MultiheadAttention
                 embed_dims=256,
@@ -99,12 +102,12 @@ model = dict(
                 batch_first=True),
             ffn_cfg=dict(
                 embed_dims=256,
-                feedforward_channels=2048,
+                feedforward_channels=1024,
                 num_fcs=2,
                 ffn_drop=0.1,
                 act_cfg=dict(type='ReLU', inplace=True)))),
     decoder=dict(  # DetrTransformerDecoder
-        num_layers=6,
+        num_layers=4,
         layer_cfg=dict(  # DetrTransformerDecoderLayer
             self_attn_cfg=dict(  # MultiheadAttention
                 embed_dims=256,
@@ -118,7 +121,7 @@ model = dict(
                 batch_first=True),
             ffn_cfg=dict(
                 embed_dims=256,
-                feedforward_channels=2048,
+                feedforward_channels=1024,
                 num_fcs=2,
                 ffn_drop=0.1,
                 act_cfg=dict(type='ReLU', inplace=True))),
@@ -148,5 +151,7 @@ model = dict(
             ])),
     test_cfg=dict(max_per_img=200))
 
-val_evaluator = dict(type='TadMetric', iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7])
+# val_evaluator = dict(type='TadMetric', iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7])
+val_evaluator = dict(type='TadMetric', iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
+                     merge_windows=True, nms_cfg=dict(type='nms', iou_thr=0.6))
 test_evaluator = val_evaluator
