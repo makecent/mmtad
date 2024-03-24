@@ -197,7 +197,7 @@ class DIoU1dLoss(DIoULoss):
 
 
 @MODELS.register_module(force=True)
-class L1Loss(L1Loss):
+class L11dLoss(L1Loss):
     """Custom L1 loss so that y1, y2 don't contribute to the loss by multiplying them with zeros."""
 
     @zero_out_loss_coordinates_decorator

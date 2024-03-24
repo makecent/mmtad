@@ -3,9 +3,9 @@ _base_ = [
 ]
 #%% 1. Optimizer settings
 optim_wrapper = dict(optimizer=dict(type='AdamW', lr=1e-4, weight_decay=0.0001),
-                     clip_grad=dict(max_norm=1.0, norm_type=2))
+                     clip_grad=dict(max_norm=0.1, norm_type=2))
 # learning policy
-max_epochs = 100
+max_epochs = 60
 param_scheduler = [
     # Linear learning rate warm-up scheduler
     dict(type='LinearLR',
@@ -27,16 +27,17 @@ train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval
 dataset_type = 'Thumos14FeatDataset'
 data_root = 'my_data/thumos14/'
 
-max_seq_len = 2304
+# max_seq_len = 2304
 train_pipeline = [
-    dict(type='RandomSlice', window_size=max_seq_len, iof_thr=0.5),
+    # dict(type='RandomSlice', window_size=max_seq_len, iof_thr=0.5),
     dict(type='LoadFeature'),
-    dict(type='PadFeature', pad_length=max_seq_len),
+    dict(type='PadFeature', pad_length=256),
     dict(type='PackTADInputs', meta_keys=())
 ]
 test_pipeline = [
     dict(type='LoadFeature'),
-    dict(type='PadFeature', pad_length=max_seq_len, pad_length_divisor=32 * (19 // 2) * 2),
+    # dict(type='PadFeature', pad_length=max_seq_len, pad_length_divisor=32 * (19 // 2) * 2),
+    dict(type='PadFeature', pad_length=256),
     dict(type='PackTADInputs',
          # meta_keys=('video_name', 'fps', 'feat_stride', 'valid_len'))]
          meta_keys=('video_name', 'fps', 'feat_stride', 'valid_len', 'window_offset', 'overlap'))]
@@ -50,7 +51,9 @@ train_dataloader = dict(
         data_root=data_root,
         ann_file='annotations/louis/thumos14_val.json',
         feat_stride=4,
-        pre_load_feat=True,
+        window_size=256,
+        window_stride=64,
+        iof_thr=0.75,
         skip_short=0.3,  # skip action annotations with duration less than 0.3 seconds
         skip_wrong=True,  # skip action annotations out of the range of video duration
         data_prefix=dict(feat='features/thumos_feat_ActionFormer_16input_4stride_2048/i3d_features'),
@@ -68,8 +71,8 @@ val_dataloader = dict(
         ann_file='annotations/louis/thumos14_test.json',
         feat_stride=4,
         # pre_load_feat=True,
-        window_size=2304,
-        window_stride=2304,
+        window_size=256,
+        window_stride=256,
         skip_short=False,
         skip_wrong=True,
         data_prefix=dict(feat='features/thumos_feat_ActionFormer_16input_4stride_2048/i3d_features'),
@@ -90,7 +93,7 @@ model = dict(
         kernel_size=1,
         out_channels=256,
         act_cfg=None,
-        norm_cfg=dict(type='GN', num_groups=32),
+        norm_cfg=None,
         num_outs=1),
     encoder=dict(
         num_layers=4,
@@ -126,7 +129,7 @@ model = dict(
                 ffn_drop=0.1,
                 act_cfg=dict(type='ReLU', inplace=True))),
         return_intermediate=True),
-    positional_encoding=dict(num_feats=256, normalize=True),
+    positional_encoding=dict(num_feats=128, normalize=True, temperature=10000),
     bbox_head=dict(
         type='DETR_TADHead',
         num_classes=20,
@@ -139,15 +142,15 @@ model = dict(
             alpha=0.25,
             loss_weight=1.0),
         loss_bbox=dict(type='L1Loss', loss_weight=5.0),
-        loss_iou=dict(type='GIoU1dLoss', loss_weight=2.0)),
+        loss_iou=dict(type='GIoULoss', loss_weight=2.0)),
     # training and testing settings
     train_cfg=dict(
         assigner=dict(
             type='HungarianAssigner',
             match_costs=[
-                dict(type='ClassificationCost', weight=1.),
-                dict(type='BBox1dL1Cost', weight=5.0, box_format='xywh'),
-                dict(type='IoU1dCost', iou_mode='giou', weight=2.0)
+                dict(type='FocalLossCost', weight=1.0),
+                dict(type='BBoxL1Cost', weight=5.0, box_format='xywh'),
+                dict(type='IoUCost', iou_mode='giou', weight=2.0)
             ])),
     test_cfg=dict(max_per_img=200))
 
