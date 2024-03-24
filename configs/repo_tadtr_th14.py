@@ -1,5 +1,5 @@
 _base_ = [
-    'default_runtime.py', './thumos14_feat.py'
+    'default_runtime.py',
 ]
 
 # TadTR (based on DeFormableDETR) setting: (DINO, TadTR)
@@ -76,8 +76,8 @@ model = dict(
             gamma=2.0,
             alpha=0.25,
             loss_weight=cls_loss_coef),
-        loss_bbox=dict(type='L1Loss', loss_weight=seg_loss_coef),
-        loss_iou=dict(type='IOU1dLoss', mode='linear', loss_weight=iou_loss_coef)),  # -log(GIoU) for DeformableDETR
+        loss_bbox=dict(type='L11dLoss', loss_weight=seg_loss_coef),
+        loss_iou=dict(type='IoU1dLoss', mode='linear', loss_weight=iou_loss_coef)),  # -log(GIoU) for DeformableDETR
     # training and testing settings
     train_cfg=dict(
         assigner=dict(
@@ -100,9 +100,6 @@ max_epochs = 16
 train_cfg = dict(
     type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=1)
 
-val_cfg = dict(type='ValLoop')
-test_cfg = dict(type='TestLoop')
-
 param_scheduler = [
     dict(
         type='MultiStepLR',
@@ -119,12 +116,12 @@ data_root = 'my_data/thumos14/'
 
 train_pipeline = [
     dict(type='LoadFeature'),
-    dict(type='PadFeature', pad_length=256),
+    dict(type='PadFeature', pad_length=128),
     dict(type='PackTADInputs', meta_keys=())
 ]
 test_pipeline = [
     dict(type='LoadFeature'),
-    dict(type='PadFeature', pad_length=256),
+    dict(type='PadFeature', pad_length=128),
     dict(type='PackTADInputs',
          meta_keys=('video_name', 'fps', 'feat_stride', 'window_offset', 'overlap'))
 ]
