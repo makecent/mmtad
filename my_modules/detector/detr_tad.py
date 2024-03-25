@@ -13,14 +13,14 @@ class DETR_TAD(DETR):
     1. Modify the positional encoding from 2D to 1D to support temporal positional encoding.
     """
 
-    # def _init_layers(self) -> None:
-    #     """Initialize layers except for backbone, neck and bbox_head."""
-    #     self.positional_encoding = SinePositional1dEncoding(
-    #         **self.positional_encoding)
-    #     self.encoder = DetrTransformerEncoder(**self.encoder)
-    #     self.decoder = DetrTransformerDecoder(**self.decoder)
-    #     self.embed_dims = self.encoder.embed_dims
-    #     # NOTE The embed_dims is typically passed from the inside out.
-    #     # For example in DETR, The embed_dims is passed as
-    #     # self_attn -> the first encoder layer -> encoder -> detector.
-    #     self.query_embedding = nn.Embedding(self.num_queries, self.embed_dims)
+    def _init_layers(self) -> None:
+        """Initialize layers except for backbone, neck and bbox_head."""
+        self.positional_encoding = SinePositional1dEncoding(
+            **self.positional_encoding)
+        self.encoder = DetrTransformerEncoder(**self.encoder)
+        self.decoder = DetrTransformerDecoder(**self.decoder)
+        self.embed_dims = self.encoder.embed_dims
+        # NOTE The embed_dims is typically passed from the inside out.
+        # For example in DETR, The embed_dims is passed as
+        # self_attn -> the first encoder layer -> encoder -> detector.
+        self.query_embedding = nn.Embedding(self.num_queries, self.embed_dims)
