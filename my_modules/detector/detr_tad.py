@@ -17,10 +17,20 @@ class DETR_TAD(DETR):
         """Initialize layers except for backbone, neck and bbox_head."""
         self.positional_encoding = SinePositional1dEncoding(
             **self.positional_encoding)
-        self.encoder = DetrTransformerEncoder(**self.encoder)
+        if self.encoder.get('num_layers', 0) == 0:
+            self.encoder = PseudoEncoder()
+            self.embed_dims = 256
+        else:
+            self.encoder = DetrTransformerEncoder(**self.encoder)
+            self.embed_dims = self.encoder.embed_dims
         self.decoder = DetrTransformerDecoder(**self.decoder)
-        self.embed_dims = self.encoder.embed_dims
         # NOTE The embed_dims is typically passed from the inside out.
         # For example in DETR, The embed_dims is passed as
         # self_attn -> the first encoder layer -> encoder -> detector.
         self.query_embedding = nn.Embedding(self.num_queries, self.embed_dims)
+
+
+class PseudoEncoder(nn.Module):
+
+    def forward(self, query, *args, **kwargs):
+        return query

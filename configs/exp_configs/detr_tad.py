@@ -1,37 +1,37 @@
 _base_ = [
     '../repo_tadtr_th14.py'
 ]
-# #%% 1. Optimizer settings
-# optim_wrapper = dict(optimizer=dict(type='AdamW', lr=2e-4, weight_decay=0.0001),
-#                      clip_grad=dict(max_norm=0.1, norm_type=2))
-# # learning policy
-# max_epochs = 60
-# # param_scheduler = [
-# #     # Linear learning rate warm-up scheduler
-# #     dict(type='LinearLR',
-# #          start_factor=1e-8,
-# #          by_epoch=True,
-# #          begin=0,
-# #          end=5,
-# #          convert_to_iter_based=True),
-# #     dict(
-# #         type='CosineAnnealingLR',
-# #         begin=5,
-# #         end=max_epochs,
-# #         eta_min=1e-8,
-# #         by_epoch=True,
-# #         convert_to_iter_based=True)]
+#%% 1. Optimizer settings
+optim_wrapper = dict(optimizer=dict(type='AdamW', lr=2e-4, weight_decay=0.0001),
+                     clip_grad=dict(max_norm=0.1, norm_type=2))
+# learning policy
+max_epochs = 500
 # param_scheduler = [
+#     # Linear learning rate warm-up scheduler
+#     dict(type='LinearLR',
+#          start_factor=1e-8,
+#          by_epoch=True,
+#          begin=0,
+#          end=5,
+#          convert_to_iter_based=True),
 #     dict(
-#         type='MultiStepLR',
-#         begin=0,
+#         type='CosineAnnealingLR',
+#         begin=5,
 #         end=max_epochs,
+#         eta_min=1e-8,
 #         by_epoch=True,
-#         milestones=[55],
-#         gamma=0.1),
-# ]
-#
-# train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=5)
+#         convert_to_iter_based=True)]
+param_scheduler = [
+    dict(
+        type='MultiStepLR',
+        begin=0,
+        end=max_epochs,
+        by_epoch=True,
+        milestones=[450],
+        gamma=0.1),
+]
+
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=50)
 #
 # #%% 2. Dataset settings
 # dataset_type = 'Thumos14FeatDataset'
@@ -103,7 +103,7 @@ _base_ = [
 model = dict(
     _delete_=True,
     type='DETR_TAD',
-    num_queries=100,
+    num_queries=40,
     data_preprocessor=dict(type='DetDataPreprocessor'),
     backbone=dict(type='PseudoBackbone'),
     neck=dict(
@@ -112,22 +112,23 @@ model = dict(
         kernel_size=1,
         out_channels=256,
         act_cfg=None,
-        norm_cfg=None,
+        bias=True,
+        norm_cfg=dict(type='GN', num_groups=32),
         num_outs=1),
     encoder=dict(
-        num_layers=4,
+        num_layers=0,
         layer_cfg=dict(  # DetrTransformerEncoderLayer
             self_attn_cfg=dict(  # MultiheadAttention
                 embed_dims=256,
                 num_heads=8,
-                dropout=0.1,
+                # dropout=0.1,
                 batch_first=True),
             ffn_cfg=dict(
                 embed_dims=256,
                 feedforward_channels=1024,
-                num_fcs=2,
-                ffn_drop=0.1,
-                act_cfg=dict(type='ReLU', inplace=True)))),
+                # num_fcs=2,
+                ffn_drop=0.1))),
+                # act_cfg=dict(type='ReLU', inplace=True)))),
     decoder=dict(  # DetrTransformerDecoder
         num_layers=4,
         layer_cfg=dict(  # DetrTransformerDecoderLayer
@@ -144,28 +145,28 @@ model = dict(
             ffn_cfg=dict(
                 embed_dims=256,
                 feedforward_channels=1024,
-                num_fcs=2,
-                ffn_drop=0.1,
-                act_cfg=dict(type='ReLU', inplace=True))),
+                # num_fcs=2,
+                ffn_drop=0.1,)),
+                # act_cfg=dict(type='ReLU', inplace=True))),
         return_intermediate=True),
-    positional_encoding=dict(num_feats=256, normalize=True, temperature=10000),
+    positional_encoding=dict(num_feats=256, normalize=True, offset=0., temperature=10000),
     bbox_head=dict(
         type='DETR_TADHead',
         num_classes=20,
-        embed_dims=256,
+        # embed_dims=256,
         sync_cls_avg_factor=True,
-        # loss_cls=dict(
-        #     type='FocalLoss',
-        #     use_sigmoid=True,
-        #     gamma=2.0,
-        #     alpha=0.25,
-        #     loss_weight=2.0),
         loss_cls=dict(
-            type='CrossEntropyLoss',
-            bg_cls_weight=0.1,
-            use_sigmoid=False,
-            loss_weight=1.0,
-            class_weight=1.0),
+            type='FocalLoss',
+            use_sigmoid=True,
+            gamma=2.0,
+            alpha=0.25,
+            loss_weight=2.0),
+        # loss_cls=dict(
+        #     type='CrossEntropyLoss',
+        #     bg_cls_weight=0.1,
+        #     use_sigmoid=False,
+        #     loss_weight=1.0,
+        #     class_weight=1.0),
         loss_bbox=dict(type='L11dLoss', loss_weight=5.0),
         loss_iou=dict(type='IoU1dLoss', mode='linear', loss_weight=2.0)),
     # training and testing settings

@@ -87,9 +87,9 @@ class DETR_TADHead(DETRHead):
         super()._init_layers()
         self.fc_reg = Pseudo4DRegLinear(self.embed_dims, delta=False)
 
-    def init_weights(self) -> None:
-        """Initialize weights of the Deformable DETR head."""
-        if self.loss_cls.use_sigmoid:
-            bias_init = bias_init_with_prob(0.01)
-            nn.init.constant_(self.fc_cls.bias, bias_init)
-        constant_init(self.fc_reg, 0, bias=0)
+    # def init_weights(self) -> None:
+    #     """Initialize weights of the Deformable DETR head."""
+    #     if self.loss_cls.use_sigmoid:
+    #         bias_init = bias_init_with_prob(0.01)
+    #         nn.init.constant_(self.fc_cls.bias, bias_init)
+    #     constant_init(self.fc_reg, 0, bias=0)
