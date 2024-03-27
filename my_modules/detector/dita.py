@@ -15,7 +15,7 @@ from torch import Tensor
 from torch import nn
 from torch.nn.init import normal_
 
-from my_modules.layers.dita_layers import DitaTransformerEncoder, DitaTransformerDecoder
+from my_modules.layers.dita_layers import TdtrTransformerEncoder, DitaTransformerDecoder
 from my_modules.layers.positional_encoding import SinePositional1dEncoding
 from my_modules.layers.pseudo_layers import Pseudo2DLinear, Pseudo4DRegLinear
 
@@ -113,7 +113,7 @@ class DITA(BaseDetector):
 
     def _init_layers(self) -> None:
         self.positional_encoding = SinePositional1dEncoding(**self.positional_encoding)
-        self.encoder = DitaTransformerEncoder(**self.encoder)
+        self.encoder = TdtrTransformerEncoder(**self.encoder)
         self.decoder = DitaTransformerDecoder(dynamic_query_pos=self.dynamic_query_pos, **self.decoder)
         self.embed_dims = self.encoder.embed_dims
         num_feats = self.positional_encoding.num_feats

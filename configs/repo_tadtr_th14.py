@@ -18,9 +18,12 @@ lr = 0.0002  # 1e-4, 2e-4
 
 # model setting
 model = dict(
-    type='TadTR',
+    type='TDTR',
     num_queries=40,  # num_matching_queries, should be smaller than the window size
     with_box_refine=True,
+    query_from_enc=False,
+    query_pos_from_enc=False,
+    dynamic_query_pos=False,
     as_two_stage=False,  # True for DeformableDETR
     num_feature_levels=1,
     data_preprocessor=dict(type='DetDataPreprocessor'),
@@ -67,7 +70,7 @@ model = dict(
     # offset=-0.5 for DeformableDETR;
     positional_encoding=dict(num_feats=256, normalize=True, offset=0, temperature=10000),
     bbox_head=dict(
-        type='TadTRHead',
+        type='TDTRHead',
         num_classes=20,
         sync_cls_avg_factor=True,
         loss_cls=dict(

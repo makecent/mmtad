@@ -125,7 +125,6 @@ class DitaHead(DETRHead):
               h), has shape (num_decoder_layers, bs, num_queries, 4) with the
               last dimension arranged as (cx, cy, w, h).
         """
-        # TODO: directly use the reference points of nex layer as output_coord?
         all_layers_outputs_classes = []
         all_layers_outputs_coords = []
 

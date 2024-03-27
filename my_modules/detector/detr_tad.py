@@ -4,6 +4,7 @@ from mmdet.registry import MODELS
 from torch import nn
 
 from my_modules.layers.positional_encoding import SinePositional1dEncoding
+from my_modules.layers.pseudo_layers import PseudoEncoder
 
 
 @MODELS.register_module()
@@ -28,9 +29,3 @@ class DETR_TAD(DETR):
         # For example in DETR, The embed_dims is passed as
         # self_attn -> the first encoder layer -> encoder -> detector.
         self.query_embedding = nn.Embedding(self.num_queries, self.embed_dims)
-
-
-class PseudoEncoder(nn.Module):
-
-    def forward(self, query, *args, **kwargs):
-        return query
