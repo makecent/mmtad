@@ -3,7 +3,7 @@ _base_ = [
 ]
 
 # TadTR (based on DeFormableDETR) setting: (DINO, TadTR)
-enc_layers = 0  # 6, 4
+enc_layers = 4  # 6, 4
 dec_layers = 4  # 6, 4
 dim_feedforward = 1024  # 2048, 1024
 dropout = 0.1  # 0.0, 0.1
@@ -38,10 +38,12 @@ model = dict(
         norm_cfg=dict(type='GN', num_groups=32),
         num_outs=1),
     encoder=dict(
+        deformable=False,
         num_layers=enc_layers,  # 6 for DeformableDETR
         layer_cfg=dict(
             self_attn_cfg=dict(
                 num_levels=1,
+                num_heads=8,
                 embed_dims=256,
                 batch_first=True),
             ffn_cfg=dict(

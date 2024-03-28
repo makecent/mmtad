@@ -53,14 +53,18 @@ class TdtrTransformerEncoder(DeformableDetrTransformerEncoder):
     b. Support memory fusion to sum all layers' output.
     """
 
-    def __init__(self, memory_fuse=False, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, deformable=True, memory_fuse=False, *args, **kwargs):
+        self.deformable = deformable
         self.memory_fuse = memory_fuse
+        if not deformable:
+            kwargs['layer_cfg']['self_attn_cfg'].pop('num_levels')
+        super().__init__(*args, **kwargs)
 
     def _init_layers(self) -> None:
         """Initialize encoder layers."""
         self.layers = ModuleList([
-            TdtrTransformerEncoderLayer(**self.layer_cfg)
+            TdtrTransformerEncoderLayer(**self.layer_cfg) if self.deformable else DetrTransformerEncoderLayer(
+                **self.layer_cfg)
             for _ in range(self.num_layers)
         ])
 
@@ -80,19 +84,23 @@ class TdtrTransformerEncoder(DeformableDetrTransformerEncoder):
                 level_start_index: Tensor, valid_ratios: Tensor,
                 **kwargs) -> Tensor:
         all_layers_query = [query]
-        reference_points = self.get_encoder_reference_points(
-            spatial_shapes, valid_ratios, device=query.device)
-        for layer in self.layers:
-            query = layer(
-                query=query,
-                query_pos=query_pos,
-                key_padding_mask=key_padding_mask,
-                spatial_shapes=spatial_shapes,
-                level_start_index=level_start_index,
-                valid_ratios=valid_ratios,
-                reference_points=reference_points,
-                **kwargs)
-            all_layers_query.append(query)
+        if self.deformable:
+            reference_points = self.get_encoder_reference_points(
+                spatial_shapes, valid_ratios, device=query.device)
+            for layer in self.layers:
+                query = layer(
+                    query=query,
+                    query_pos=query_pos,
+                    key_padding_mask=key_padding_mask,
+                    spatial_shapes=spatial_shapes,
+                    level_start_index=level_start_index,
+                    valid_ratios=valid_ratios,
+                    reference_points=reference_points,
+                    **kwargs)
+                all_layers_query.append(query)
+        else:
+            for layer in self.layers:
+                query = layer(query, query_pos, key_padding_mask, **kwargs)
         if self.memory_fuse:
             query = torch.sum(torch.stack(all_layers_query), dim=0)
         return query
@@ -358,7 +366,6 @@ class DitaTransformerDecoder(BaseModule):
 
 
 class TdtrTransformerEncoderLayer(DetrTransformerEncoderLayer):
-
 
     def _init_layers(self) -> None:
         """Initialize self_attn, ffn, and norms."""
