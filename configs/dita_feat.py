@@ -17,12 +17,12 @@ lr = 0.0001
 
 # model setting
 model = dict(
-    type='DITA',
+    type='TDTR',
     num_queries=200,
     with_box_refine=True,
     as_two_stage=False,
-    static_query=True,
-    static_query_pos=True,
+    query_from_enc=False,
+    query_pos_from_enc=False,
     num_feature_levels=4,
     data_preprocessor=dict(type='DetDataPreprocessor'),
     backbone=dict(type='PseudoBackbone', multi_scale=False),  # No backbone since we use pre-extracted features.
@@ -80,7 +80,7 @@ model = dict(
         post_norm_cfg=None),
     positional_encoding=dict(num_feats=256, normalize=True, offset=-0.5, temperature=10000),
     bbox_head=dict(
-        type='DitaHead',
+        type='TDTRHead',
         num_classes=20,
         sync_cls_avg_factor=True,
         loss_cls=dict(
