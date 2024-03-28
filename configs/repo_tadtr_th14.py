@@ -3,7 +3,7 @@ _base_ = [
 ]
 
 # TadTR (based on DeFormableDETR) setting: (DINO, TadTR)
-enc_layers = 4  # 6, 4
+enc_layers = 0  # 6, 4
 dec_layers = 4  # 6, 4
 dim_feedforward = 1024  # 2048, 1024
 dropout = 0.1  # 0.0, 0.1
@@ -23,7 +23,7 @@ model = dict(
     with_box_refine=True,
     query_from_enc=False,
     query_pos_from_enc=False,
-    dynamic_query_pos=False,
+    dynamic_query_pos=True,
     as_two_stage=False,  # True for DeformableDETR
     num_feature_levels=1,
     data_preprocessor=dict(type='DetDataPreprocessor'),

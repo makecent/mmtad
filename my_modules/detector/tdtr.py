@@ -77,6 +77,8 @@ class TDTR(DeformableDETR):
 
         # Level encoding
         self.level_embed = nn.Parameter(torch.Tensor(self.num_feature_levels, self.embed_dims))
+        if isinstance(self.encoder, PseudoEncoder):
+            self.level_embed.requires_grad_(False)
 
         # Others
         if self.as_two_stage:
