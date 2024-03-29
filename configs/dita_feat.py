@@ -4,7 +4,7 @@ _base_ = [
 
 enc_layers = 4
 dec_layers = 4
-dim_feature = 2048
+dim_feature = 2432  # 2432 for two-stream
 dim_feedforward = 1024
 dropout = 0.1
 
@@ -12,7 +12,6 @@ cls_loss_coef = 2
 seg_loss_coef = 5
 iou_loss_coef = 2
 
-max_per_img = 200
 lr = 0.0001
 
 # model setting
@@ -136,7 +135,7 @@ test_pipeline = [
          meta_keys=('video_name', 'window_offset', 'fps', 'feat_stride', 'valid_len', 'overlap'))
 ]
 train_dataloader = dict(
-    batch_size=2,
+    batch_size=32,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -152,8 +151,8 @@ train_dataloader = dict(
         iof_thr=0.75,
         skip_short=0.3,  # skip action annotations with duration less than 0.3 seconds
         skip_wrong=True,  # skip action annotations out of the range of video duration
-        # data_prefix=dict(feat='features/thumos_feat_VideoMAE2-RGB_I3D-Flow_2432'),
-        data_prefix=dict(feat='features/thumos_feat_ActionFormer_16input_4stride_2048/i3d_features'),
+        data_prefix=dict(feat='features/thumos_feat_VideoMAE2-RGB_I3D-Flow_2432'),
+        # data_prefix=dict(feat='features/thumos_feat_ActionFormer_16input_4stride_2048/i3d_features'),
         filter_cfg=dict(filter_empty_gt=False),
         pipeline=train_pipeline))
 val_dataloader = dict(
@@ -171,8 +170,8 @@ val_dataloader = dict(
         window_stride=64,  # overlap=0.25
         skip_short=False,
         skip_wrong=True,
-        # data_prefix=dict(feat='features/thumos_feat_VideoMAE2-RGB_I3D-Flow_2432'),
-        data_prefix=dict(feat='features/thumos_feat_ActionFormer_16input_4stride_2048/i3d_features'),
+        data_prefix=dict(feat='features/thumos_feat_VideoMAE2-RGB_I3D-Flow_2432'),
+        # data_prefix=dict(feat='features/thumos_feat_ActionFormer_16input_4stride_2048/i3d_features'),
         test_mode=True,
         pipeline=test_pipeline))
 test_dataloader = val_dataloader

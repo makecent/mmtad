@@ -23,7 +23,7 @@ model = dict(
     with_box_refine=True,
     query_from_enc=False,
     query_pos_from_enc=False,
-    dynamic_query_pos=True,
+    dynamic_query_pos=False,
     as_two_stage=False,  # True for DeformableDETR
     num_feature_levels=1,
     data_preprocessor=dict(type='DetDataPreprocessor'),
@@ -38,7 +38,7 @@ model = dict(
         norm_cfg=dict(type='GN', num_groups=32),
         num_outs=1),
     encoder=dict(
-        deformable=False,
+        deformable=True,
         num_layers=enc_layers,  # 6 for DeformableDETR
         layer_cfg=dict(
             self_attn_cfg=dict(

@@ -129,7 +129,7 @@ class THUMOS14Dataset(BaseDetDataset):
 
                 # Process window one-by-one
                 for start_idx, end_idx in zip(start_indices, end_indices):
-                    frame_inds = np.arange(start_idx, end_idx, self.frame_interval)
+                    frame_inds = np.arange(start_idx, end_idx, self.frame_interval, dtype=int)
                     data_info.update(dict(
                         frame_interval=self.frame_interval,
                         window_offset=start_idx / fps,

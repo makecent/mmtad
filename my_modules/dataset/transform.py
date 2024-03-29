@@ -77,10 +77,10 @@ class RandomSlice(BaseTransform):
     @staticmethod
     def get_valid_mask(segments, patch, iof_thr, ignore_flags=None):
         gt_iofs = segment_overlaps(segments, patch, mode='iof')[:, 0]
-        # patch_iofs = segment_overlaps(patch, segments, mode='iof')[0, :]
-        # iofs = np.maximum(gt_iofs, patch_iofs)
-        # mask = iofs >= iof_thr
-        mask = gt_iofs >= iof_thr
+        patch_iofs = segment_overlaps(patch, segments, mode='iof')[0, :]
+        iofs = np.maximum(gt_iofs, patch_iofs)
+        mask = iofs >= iof_thr
+        # mask = gt_iofs >= iof_thr
         if ignore_flags is not None:
             mask = mask & ~ignore_flags
         return mask
@@ -125,7 +125,9 @@ class RandomSlice(BaseTransform):
         else:
             raise RuntimeError(
                 f"Could not found a valid crop after {self.attempts} attempts, "
-                f"you may need increase the window size or number of attempts")
+                f"you may need increase the window size or number of attempts."
+                f"Trying to find a window of size {self.window_size} in a video of size {max_len}, "
+                f"which has actions {action_segments}.")
 
         # Convert the segment annotations to be relative to the cropped window.
         action_segments = action_segments[valid_mask].clip(min=start_idx, max=end_idx) - start_idx
@@ -138,7 +140,7 @@ class RandomSlice(BaseTransform):
             results['frame_inds'] = np.arange(start_idx, end_idx, step=self.frame_interval)
             results['frame_interval'] = self.frame_interval
             results['valid_len'] = len(results['frame_inds'])
-            results['clip_len'] = crop_size // self.frame_interval
+            results['clip_len'] = self.window_size // self.frame_interval
             results['segments'] = action_segments / self.frame_interval
         else:
             raise NotImplementedError

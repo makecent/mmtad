@@ -1,14 +1,23 @@
 _base_ = ['./default_runtime.py']
 
+clip_len = 96
+frame_interval = 10
+img_shape = (224, 224)
+img_shape_test = (224, 224)
 # model settings
 model = dict(type='SingleStageDetector',
-             backbone=dict(type='SlowOnly', freeze_bn=True, freeze_bn_affine=True),
+             backbone=dict(type='VisionMamba', num_frames=clip_len, num_classes=0,
+                           patch_size=16, embed_dim=192, depth=24, rms_norm=True,
+                           residual_in_fp32=True, fused_add_norm=True,
+                           init_cfg=dict(type='Pretrained',
+                                         checkpoint='https://huggingface.co/OpenGVLab/VideoMamba/resolve/main/videomamba_t16_k400_f64_res224.pth?download=true')
+                           ),
              neck=[
                  dict(type='MaxPool3d', kernel_size=(2, 1, 1), stride=(2, 1, 1)),
                  dict(type='TemporalDownSampler',
                       num_levels=5,
-                      in_channels=2048,
-                      out_channels=512,
+                      in_channels=192,
+                      out_channels=256,
                       conv_type='Conv3d',
                       kernel_sizes=(3, 1, 1),
                       strides=(2, 1, 1),
@@ -17,7 +26,7 @@ model = dict(type='SingleStageDetector',
                  dict(type='AdaptiveAvgPool3d', output_size=(None, 1, 1)),  # (N, C, T, H, W) to (N, C, T, 1, 1)
                  dict(type='Flatten', start_dim=2),  # (N, C, T, 1, 1) to (N, C, T)
                  dict(type='FPN',
-                      in_channels=[2048, 512, 512, 512, 512],
+                      in_channels=[192, 256, 256, 256, 256],
                       out_channels=256,
                       num_outs=5,
                       conv_cfg=dict(type='Conv1d'),
@@ -64,18 +73,13 @@ data_root = 'my_data/thumos14'  # Root path to data for training
 data_prefix_train = 'rawframes/val'  # path to data for training
 data_prefix_val = 'rawframes/test'  # path to data for validation and testing
 
-clip_len = 192
-frame_interval = 5
-img_shape = (112, 112)
-img_shape_test = (128, 128)
-
 train_pipeline = [
     dict(type='RandomSlice',
          window_size=clip_len * frame_interval,
          frame_interval=frame_interval,
          iof_thr=0.75),
     dict(type='mmaction.RawFrameDecode'),
-    dict(type='mmaction.Resize', scale=(128, -1), keep_ratio=True),
+    dict(type='mmaction.Resize', scale=(256, -1), keep_ratio=True),
     dict(type='mmaction.RandomCrop', size=img_shape[0]),  # mmaction2 RandomCrop only supports square crop
     dict(type='mmaction.Flip', flip_ratio=0.5),
     dict(type='PhotoMetricDistortion3d',
@@ -94,7 +98,7 @@ train_pipeline = [
 
 val_pipeline = [
     dict(type='mmaction.RawFrameDecode'),
-    dict(type='mmaction.Resize', scale=(128, -1), keep_ratio=True),
+    dict(type='mmaction.Resize', scale=(256, -1), keep_ratio=True),
     dict(type='mmaction.CenterCrop', crop_size=img_shape_test),
     dict(type='Pad3d', size=(clip_len, *img_shape_test)),
     dict(type='mmaction.FormatShape', input_format='NCTHW'),
@@ -141,7 +145,10 @@ param_scheduler = [
          begin=40, end=1240, convert_to_iter_based=True)
 ]
 # optimizer
-optim_wrapper = dict(optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001))
+optim_wrapper = dict(
+    optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
+    accumulative_counts=4,
+)
 
 # evaluation settings
 val_evaluator = dict(type='TadMetric', iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
@@ -149,5 +156,3 @@ val_evaluator = dict(type='TadMetric', iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
 test_evaluator = val_evaluator
 
 default_hooks = dict(logger=dict(interval=20, interval_exp_name=1000), checkpoint=dict(interval=100, max_keep_ckpts=12))
-# save memory
-efficient_conv_bn_eval = ['backbone']  # only work for slowonly
