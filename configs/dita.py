@@ -4,8 +4,8 @@ _base_ = [
 
 enc_layers = 4
 dec_layers = 4
-# dim_feat = 2048
-dim_feat = 768
+dim_feat = 2048
+# dim_feat = 768
 dim_feedforward = 1024
 dropout = 0.1
 
@@ -18,7 +18,7 @@ lr = 0.0001
 
 # model setting
 model = dict(
-    type='DITA',
+    type='TDTR',
     num_queries=200,
     with_box_refine=True,
     as_two_stage=False,
@@ -43,7 +43,7 @@ model = dict(
             type='TemporalDownSampler',
             num_levels=4,
             in_channels=dim_feat,
-            out_channels=512,
+            out_channels=256,
             conv_type='Conv1d',
             kernel_sizes=3,
             strides=2,
@@ -52,7 +52,7 @@ model = dict(
         dict(type='Unflatten', dim=-1, unflattened_size=(1, -1)),  # (N, C, T) to (N, C, 1, T) mimic NCHW
         dict(
             type='ChannelMapper',
-            in_channels=[dim_feat, 512, 512, 512],
+            in_channels=[dim_feat, 256, 256, 256],
             kernel_size=1,
             out_channels=256,
             act_cfg=None,
@@ -69,7 +69,7 @@ model = dict(
                 embed_dims=256,
                 feedforward_channels=dim_feedforward,
                 ffn_drop=dropout)),
-        memory_fuse=True),  # Using memory fusion
+        memory_fuse=False),  # Using memory fusion
     decoder=dict(
         num_layers=dec_layers,
         return_intermediate=True,
@@ -91,7 +91,7 @@ model = dict(
         post_norm_cfg=None),
     positional_encoding=dict(num_feats=256, normalize=True, offset=-0.5, temperature=10000),
     bbox_head=dict(
-        type='DitaHead',
+        type='TDTRHead',
         num_classes=20,
         sync_cls_avg_factor=True,
         loss_cls=dict(
@@ -121,6 +121,7 @@ optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=dict(type='AdamW', lr=lr, weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
+    accumulative_counts=8,
     paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1),
                                     'sampling_offsets': dict(lr_mult=0.1),
                                     'reference_points': dict(lr_mult=0.1)}))
@@ -142,14 +143,14 @@ num_clips = 15  # 192/12=16 frame per clip
 # window_stride_train = 360  # overlap=0.75
 # window_stride_test = 360  # overlap=0.25
 # num_clips = 6        # 96/6=16 frame per clip
-# img_shape = (112, 112)
-# img_shape_test = (128, 128)
-img_shape = (224, 224)
-img_shape_test = (224, 224)
+img_shape = (112, 112)
+img_shape_test = (128, 128)
+# img_shape = (224, 224)
+# img_shape_test = (224, 224)
 
 train_pipeline = [
-    dict(type='PseudoFrameDecode'),
-    # dict(type='mmaction.RawFrameDecode'),
+    # dict(type='PseudoFrameDecode'),
+    dict(type='mmaction.RawFrameDecode'),
     dict(type='mmaction.Resize', scale=img_shape, keep_ratio=False),
     dict(type='mmaction.Flip', flip_ratio=0.5),
     dict(type='Pad3d', size=(window_size // frame_interval, *img_shape)),
@@ -158,8 +159,8 @@ train_pipeline = [
     dict(type='PackTADInputs', meta_keys=())
 ]
 test_pipeline = [
-    dict(type='PseudoFrameDecode'),
-    # dict(type='mmaction.RawFrameDecode'),
+    # dict(type='PseudoFrameDecode'),
+    dict(type='mmaction.RawFrameDecode'),
     dict(type='mmaction.Resize', scale=img_shape_test, keep_ratio=False),
     dict(type='Pad3d', size=(window_size // frame_interval, *img_shape_test)),
     dict(type='TemporalSegment', num_clips=num_clips),
@@ -208,4 +209,4 @@ test_dataloader = val_dataloader
 val_evaluator = dict(type='TadMetric', merge_windows=True,
                      iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7], nms_cfg=dict(type='nms', iou_thr=0.6))
 test_evaluator = val_evaluator
-# efficient_conv_bn_eval = ['backbone'] # only work for slowonly
+efficient_conv_bn_eval = ['backbone'] # only work for slowonly
