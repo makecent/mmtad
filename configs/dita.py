@@ -22,20 +22,20 @@ model = dict(
     num_queries=200,
     with_box_refine=True,
     as_two_stage=False,
-    static_query=True,
-    static_query_pos=True,
+    query_from_enc=False,
+    query_pos_from_enc=False,
     num_feature_levels=4,
     data_preprocessor=dict(
         type='mmaction.ActionDataPreprocessor',
         mean=[123.675, 116.28, 103.53],
         std=[58.395, 57.12, 57.375],
         format_shape='NCTHW'),
-    # backbone=dict(type='SlowOnly',
-    #               out_indices=(4,),
-    #               freeze=False,
-    #               freeze_bn=True,
-    #               freeze_bn_affine=True),
-    backbone=dict(type='VideoMAE_Base', freeze=False),
+    backbone=dict(type='SlowOnly',
+                  out_indices=(4,),
+                  freeze=False,
+                  freeze_bn=True,
+                  freeze_bn_affine=True),
+    # backbone=dict(type='VideoMAE_Base', freeze=False),
     neck=[
         dict(type='AdaptiveAvgPool3d', output_size=(None, 1, 1)),  # (N, C, T, H, W) to (N, C, T, 1, 1)
         dict(type='Flatten', start_dim=2),  # (N, C, T, 1, 1) to (N, C, T)

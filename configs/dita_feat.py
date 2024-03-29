@@ -122,15 +122,16 @@ train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval
 # dataset settings
 dataset_type = 'Thumos14FeatDataset'
 data_root = 'my_data/thumos14/'
+max_len = 256
 
 train_pipeline = [
     dict(type='LoadFeature'),
-    dict(type='PadFeature', pad_length=256),
+    dict(type='PadFeature', pad_length=max_len),
     dict(type='PackTADInputs', meta_keys=())
 ]
 test_pipeline = [
     dict(type='LoadFeature'),
-    dict(type='PadFeature', pad_length=256),
+    dict(type='PadFeature', pad_length=max_len),
     dict(type='PackTADInputs',
          meta_keys=('video_name', 'window_offset', 'fps', 'feat_stride', 'valid_len', 'overlap'))
 ]
@@ -139,15 +140,14 @@ train_dataloader = dict(
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
-    # batch_sampler=dict(type='AspectRatioBatchSampler'),
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
         ann_file='annotations/louis/thumos14_val.json',
         feat_stride=4,
         pre_load_feat=False,
-        window_size=256,
-        window_stride=32,  # overlap=0.75
+        window_size=max_len,
+        window_stride=int(max_len*0.125),  # overlap=0.75
         iof_thr=0.75,
         skip_short=0.3,  # skip action annotations with duration less than 0.3 seconds
         skip_wrong=True,  # skip action annotations out of the range of video duration
@@ -166,8 +166,8 @@ val_dataloader = dict(
         data_root=data_root,
         ann_file='annotations/louis/thumos14_test.json',
         feat_stride=4,
-        window_size=256,
-        window_stride=64,  # overlap=0.25
+        window_size=max_len,
+        window_stride=int(max_len*0.25),  # overlap=0.25
         skip_short=False,
         skip_wrong=True,
         data_prefix=dict(feat='features/thumos_feat_VideoMAE2-RGB_I3D-Flow_2432'),
