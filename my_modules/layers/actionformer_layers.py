@@ -68,17 +68,22 @@ class MaskedConv1dModule(ConvModule):
             bias=self.with_bias
         )
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor, activate: bool = True, norm: bool = True) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None, activate: bool = True, norm: bool = True) -> torch.Tensor:
 
         for layer in self.order:
             if layer == 'conv':
                 if self.with_explicit_padding:
                     x = self.padding_layer(x)
-                x, mask = self.conv(x, mask)
+                if mask is None:
+                    x = self.conv(x)
+                else:
+                    x, mask = self.conv(x, mask)
             elif layer == 'norm' and norm and self.with_norm:
                 x = self.norm(x)
             elif layer == 'act' and activate and self.with_activation:
                 x = self.activate(x)
+        if mask is None:
+            return x
         return x, mask
 
 
@@ -98,7 +103,7 @@ class MaskedConv1d(nn.Conv1d):
         # element must be aligned
         assert (self.kernel_size[0] % 2 == 1) and (self.kernel_size[0] // 2 == self.padding[0])
 
-    def forward(self, x, mask):
+    def forward(self, x, mask=None):
         # x: batch size, feature channel, sequence length,
         # mask: batch size, 1, sequence length (bool)
         B, C, T = x.size()
@@ -107,6 +112,13 @@ class MaskedConv1d(nn.Conv1d):
 
         # Apply convolution from parent class
         out_conv = super(MaskedConv1d, self).forward(x)
+
+        return_mask = True
+        if mask is None:
+            # we use a hacky way to determine the padding position, the non zeros channels.
+            # we assume that a valid feature position is unlikely to contain all zeros across channels
+            mask = (x != 0).any(dim=1, keepdim=True).detach()
+            return_mask = False
 
         # Compute the mask
         if self.stride[0] > 1:
@@ -121,7 +133,8 @@ class MaskedConv1d(nn.Conv1d):
         # Masking the output, stop gradient to mask
         out_conv = out_conv * out_mask.detach()
         out_mask = out_mask.bool()
-
+        if not return_mask:
+            return out_conv
         return out_conv, out_mask
 
 

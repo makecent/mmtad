@@ -4,6 +4,8 @@ import torch.nn as nn
 from mmcv.cnn import ConvModule
 from mmdet.registry import MODELS
 
+from my_modules.layers.actionformer_layers import MaskedConv1dModule
+
 
 def enable_batch_processing(module_cls):
     original_forward = module_cls.forward
@@ -51,21 +53,30 @@ class TemporalDownSampler(nn.Module):
 
         td_layers = []
         for i in range(self.num_levels - 1):
-            td_layers.append(ConvModule(in_channels,
-                                        out_channels,
-                                        kernel_sizes,
-                                        strides,
-                                        paddings,
-                                        conv_cfg=dict(type=conv_type),
-                                        norm_cfg=dict(type='SyncBN'),
-                                        act_cfg=dict(type='ReLU')))
+            if conv_type == 'MaskedConv1d':
+                td_layers.append(MaskedConv1dModule(in_channels,
+                                                    out_channels,
+                                                    kernel_sizes,
+                                                    strides,
+                                                    paddings,
+                                                    norm_cfg=dict(type='tLN'),
+                                                    act_cfg=dict(type='ReLU')))
+            else:
+                td_layers.append(ConvModule(in_channels,
+                                            out_channels,
+                                            kernel_sizes,
+                                            strides,
+                                            paddings,
+                                            conv_cfg=dict(type=conv_type),
+                                            norm_cfg=dict(type='SyncBN'),
+                                            act_cfg=dict(type='ReLU')))
             in_channels = out_channels
         self.td_layers = nn.Sequential(*td_layers)
 
     def forward(self, x):
         # N, C, T, H, W
         assert x.size(2) >= 2 ** self.num_levels, (f"The temporal length of input {x.size(2)} is too short"
-                                                         f" for {self.num_levels - 1} levels of down-sampling")
+                                                   f" for {self.num_levels - 1} levels of down-sampling")
         outs = []
         if 0 in self.out_indices:
             outs.append(x)
