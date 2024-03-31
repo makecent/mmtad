@@ -89,10 +89,11 @@ class TDTR(DeformableDETR):
             # if two_stage, encoder output (memory) are projected to construct the initial states of decoder input,
             self.memory_trans_fc = nn.Linear(self.embed_dims, self.embed_dims)
             self.memory_trans_norm = nn.LayerNorm(self.embed_dims)
+            self.proposals = nn.Embedding(480, self.embed_dims)
+            self.enc_fc = Pseudo4DRegLinear(self.embed_dims, delta=False)
+
         else:
             self.reference_points_fc = Pseudo4DRegLinear(self.embed_dims, delta=False)
-        self.proposals = nn.Embedding(480, self.embed_dims)
-        self.enc_fc = Pseudo4DRegLinear(self.embed_dims, delta=False)
 
     def init_weights(self) -> None:
         """Initialize weights for Transformer and other components."""
@@ -115,11 +116,18 @@ class TDTR(DeformableDETR):
 
         normal_(self.level_embed)
 
-    def forward_transformer(self, img_feats: Tuple[Tensor],
-                            batch_data_samples: OptSampleList = None, ) -> Dict:
+    def pre_transformer(
+            self,
+            mlvl_feats: Tuple[Tensor],
+            batch_data_samples: OptSampleList = None) -> Tuple[Dict]:
+        encoder_inputs_dict, decoder_inputs_dict = super().pre_transformer(mlvl_feats, batch_data_samples)
+        decoder_inputs_dict['memory_pos'] = encoder_inputs_dict['feat_pos']
+        return encoder_inputs_dict, decoder_inputs_dict
 
-        encoder_inputs_dict, decoder_inputs_dict = self.pre_transformer(
-            img_feats, batch_data_samples)
+    def forward_transformer(self, img_feats: Tuple[Tensor],
+                            batch_data_samples: OptSampleList = None) -> Dict:
+
+        encoder_inputs_dict, decoder_inputs_dict = self.pre_transformer(img_feats, batch_data_samples)
 
         encoder_outputs_dict = self.forward_encoder(**encoder_inputs_dict)
 
@@ -164,7 +172,7 @@ class TDTR(DeformableDETR):
         # %% Compute initial decoder query and query_pos
         if self.query_from_enc:
             pos_trans_out = self.query_fc(
-                self.get_proposal_pos_embed(topk_coords_unact[..., ::2], num_pos_feats=self.embed_dims//2))
+                self.get_proposal_pos_embed(topk_coords_unact[..., ::2], num_pos_feats=self.embed_dims // 2))
             query = self.query_norm(pos_trans_out)
         else:
             query = self.query_embedding.weight.unsqueeze(0).expand(batch_size, -1, -1)
@@ -172,7 +180,7 @@ class TDTR(DeformableDETR):
         if self.query_pos_from_enc:
             if not self.dynamic_query_pos:
                 pos_trans_out = self.query_pos_fc(
-                    self.get_proposal_pos_embed(topk_coords_unact[..., ::2], num_pos_feats=self.embed_dims//2))
+                    self.get_proposal_pos_embed(topk_coords_unact[..., ::2], num_pos_feats=self.embed_dims // 2))
                 query_pos = self.query_pos_norm(pos_trans_out)
         else:
             query_pos = self.query_pos_embedding.weight.unsqueeze(0).expand(batch_size, -1, -1)
@@ -218,6 +226,7 @@ class TDTR(DeformableDETR):
                         query: Tensor,
                         query_pos: Tensor,
                         memory: Tensor,
+                        memory_pos: Tensor,
                         memory_mask: Tensor,
                         reference_points: Tensor,
                         spatial_shapes: Tensor,
@@ -229,13 +238,14 @@ class TDTR(DeformableDETR):
             query=query,
             value=memory,
             query_pos=query_pos,
+            key_pos=memory_pos,
             key_padding_mask=memory_mask,
             self_attn_mask=dn_mask,
             reference_points=reference_points,
             spatial_shapes=spatial_shapes,
             level_start_index=level_start_index,
             valid_ratios=valid_ratios,
-            reg_branches=self.bbox_head.reg_branches,
+            reg_branches=self.bbox_head.reg_branches if self.with_box_refine else None,
             **kwargs)
 
         if len(query) == self.num_queries and self.dn_cfg is not None:
@@ -249,3 +259,29 @@ class TDTR(DeformableDETR):
         decoder_outputs_dict = dict(
             hidden_states=inter_states, references=list(references))
         return decoder_outputs_dict
+
+    #
+    def predict(self,
+                batch_inputs: Tensor,
+                batch_data_samples=None,
+                rescale: bool = True):
+        """Modified for computing flops, removing the batch_data_samples from positional arguments"""
+        img_feats = self.extract_feat(batch_inputs)
+        if batch_data_samples is None:
+            from mmdet.structures import DetDataSample
+            width = batch_inputs.shape[-1]
+            dummy = DetDataSample(metainfo=dict(
+                img_shape=(1, width),
+                batch_input_shape=(1, width),
+                scale_factor=(1.0, 1.0)
+            ))
+            batch_data_samples = [dummy]
+        head_inputs_dict = self.forward_transformer(img_feats,
+                                                    batch_data_samples)
+        results_list = self.bbox_head.predict(
+            **head_inputs_dict,
+            rescale=rescale,
+            batch_data_samples=batch_data_samples)
+        batch_data_samples = self.add_pred_to_datasample(
+            batch_data_samples, results_list)
+        return batch_data_samples

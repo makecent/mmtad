@@ -7,7 +7,7 @@ from mmcv.cnn.bricks.transformer import FFN, MultiheadAttention
 from mmcv.ops import MultiScaleDeformableAttention
 from mmcv.utils import ext_loader
 from mmdet.models.layers import DeformableDetrTransformerDecoderLayer, DetrTransformerEncoderLayer, \
-    DinoTransformerDecoder, DeformableDetrTransformerEncoder, DeformableDetrTransformerDecoder
+    DinoTransformerDecoder, DeformableDetrTransformerEncoder, DeformableDetrTransformerDecoder, DetrTransformerDecoderLayer
 from mmdet.models.layers.transformer.utils import MLP, coordinate_to_encoding, inverse_sigmoid
 from mmdet.utils import ConfigType
 from mmdet.utils import OptConfigType
@@ -114,14 +114,16 @@ class TdtrTransformerDecoder(DeformableDetrTransformerDecoder):
     b. Support dynamic query pos, i.e., updated as the change of reference points across decoder layers
     """
 
-    def __init__(self, dynamic_query_pos, *args, **kwargs):
+    def __init__(self, deformable=True, dynamic_query_pos=True, *args, **kwargs):
+        self.deformable = deformable
         self.dynamic_query_pos = dynamic_query_pos
         super().__init__(*args, **kwargs)
 
     def _init_layers(self) -> None:
         """Initialize decoder layers."""
         self.layers = ModuleList([
-            TdtrTransformerDecoderLayer(**self.layer_cfg)
+            TdtrTransformerDecoderLayer(**self.layer_cfg) if self.deformable else DetrTransformerDecoderLayer(
+                **self.layer_cfg)
             for _ in range(self.num_layers)
         ])
         self.embed_dims = self.layers[0].embed_dims
@@ -136,6 +138,7 @@ class TdtrTransformerDecoder(DeformableDetrTransformerDecoder):
                 query: Tensor,
                 query_pos: Tensor,
                 value: Tensor,
+                key_pos: Tensor,
                 key_padding_mask: Tensor,
                 self_attn_mask: Tensor,
                 reference_points: Tensor,
@@ -148,43 +151,53 @@ class TdtrTransformerDecoder(DeformableDetrTransformerDecoder):
         intermediate = []
         intermediate_reference_points = [reference_points]
         for layer_id, layer in enumerate(self.layers):
-            if reference_points.shape[-1] == 4:
-                reference_points_input = \
-                    reference_points[:, :, None] * torch.cat(
-                        [valid_ratios, valid_ratios], -1)[:, None]
-            else:
-                assert reference_points.shape[-1] == 2
-                reference_points_input = \
-                    reference_points[:, :, None] * valid_ratios[:, None]
-
-            if self.dynamic_query_pos:
-                query_sine_embed = coordinate_to_encoding(
-                    reference_points_input[:, :, 0, :])
-                query_pos = self.ref_point_head(query_sine_embed)
-
-            query = layer(
-                query,
-                query_pos=query_pos,
-                value=value,
-                key_padding_mask=key_padding_mask,
-                self_attn_mask=self_attn_mask,
-                spatial_shapes=spatial_shapes,
-                level_start_index=level_start_index,
-                valid_ratios=valid_ratios,
-                reference_points=reference_points_input,
-                **kwargs)
-
-            if reg_branches is not None:
-                tmp_reg_preds = reg_branches[layer_id](query)
+            if self.deformable:
                 if reference_points.shape[-1] == 4:
-                    new_reference_points = tmp_reg_preds + inverse_sigmoid(reference_points)
-                    new_reference_points = new_reference_points.sigmoid()
+                    reference_points_input = \
+                        reference_points[:, :, None] * torch.cat(
+                            [valid_ratios, valid_ratios], -1)[:, None]
                 else:
                     assert reference_points.shape[-1] == 2
-                    new_reference_points = tmp_reg_preds
-                    new_reference_points[..., :2] = tmp_reg_preds[..., :2] + inverse_sigmoid(reference_points)
-                    new_reference_points = new_reference_points.sigmoid()
-                reference_points = new_reference_points.detach()
+                    reference_points_input = \
+                        reference_points[:, :, None] * valid_ratios[:, None]
+
+                if self.dynamic_query_pos:
+                    query_sine_embed = coordinate_to_encoding(
+                        reference_points_input[:, :, 0, :])
+                    query_pos = self.ref_point_head(query_sine_embed)
+
+                query = layer(
+                    query,
+                    query_pos=query_pos,
+                    value=value,
+                    key_padding_mask=key_padding_mask,
+                    self_attn_mask=self_attn_mask,
+                    spatial_shapes=spatial_shapes,
+                    level_start_index=level_start_index,
+                    valid_ratios=valid_ratios,
+                    reference_points=reference_points_input,
+                    **kwargs)
+
+                if reg_branches is not None:
+                    tmp_reg_preds = reg_branches[layer_id](query)
+                    if reference_points.shape[-1] == 4:
+                        new_reference_points = tmp_reg_preds + inverse_sigmoid(reference_points)
+                        new_reference_points = new_reference_points.sigmoid()
+                    else:
+                        assert reference_points.shape[-1] == 2
+                        new_reference_points = tmp_reg_preds
+                        new_reference_points[..., :2] = tmp_reg_preds[..., :2] + inverse_sigmoid(reference_points)
+                        new_reference_points = new_reference_points.sigmoid()
+                    reference_points = new_reference_points.detach()
+            else:
+                query = layer(
+                    query,
+                    key=value,
+                    value=value,
+                    query_pos=query_pos,
+                    key_pos=key_pos,
+                    key_padding_mask=key_padding_mask,
+                    **kwargs)
 
             if self.return_intermediate:
                 intermediate.append(self.post_norm(query))
