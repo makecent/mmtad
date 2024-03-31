@@ -32,11 +32,27 @@ class DETR_TADHead(DETRHead):
             batch_img_metas.append(data_sample.metainfo)
             batch_gt_instances.append(data_sample.gt_instances)
 
-        outs = self(hidden_states)
+        outs = self(hidden_states, references)
         loss_inputs = outs + (batch_gt_instances, batch_img_metas)
         losses = self.loss_by_feat(*loss_inputs)
         return losses
 
+    def predict(self,
+                hidden_states,
+                references,
+                batch_data_samples,
+                rescale: bool = True) :
+        batch_img_metas = [
+            data_samples.metainfo for data_samples in batch_data_samples
+        ]
+
+        last_layer_hidden_state = hidden_states[-1].unsqueeze(0)
+        outs = self(last_layer_hidden_state, references)
+
+        predictions = self.predict_by_feat(
+            *outs, batch_img_metas=batch_img_metas, rescale=rescale)
+
+        return predictions
     def forward(self, hidden_states, references):
         layers_cls_scores = self.fc_cls(hidden_states)
         layers_bbox_preds = self.fc_reg(

@@ -131,7 +131,7 @@ class TdtrTransformerDecoder(DeformableDetrTransformerDecoder):
             self.post_norm = build_norm_layer(self.post_norm_cfg, self.embed_dims)[1]
         else:
             self.post_norm = nn.Identity()
-        if self.dynamic_query_pos:
+        if self.dynamic_query_pos and self.deformable:
             self.ref_point_head = MLP(self.embed_dims * 2, self.embed_dims, self.embed_dims, 2)
 
     def forward(self,

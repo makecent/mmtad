@@ -39,7 +39,7 @@ class TDTR(DeformableDETR):
             assert not self.as_two_stage, \
                 'At least one of the decoder query initialization should be from encoder when as_two_stage is True.'
         self.dn_cfg = dn_cfg
-        if dn_cfg is not None:
+        if dn_cfg is not None and self.decoder.deformable:
             assert 'num_classes' not in dn_cfg and \
                    'num_queries' not in dn_cfg and \
                    'hidden_dim' not in dn_cfg, \
@@ -92,7 +92,7 @@ class TDTR(DeformableDETR):
             self.proposals = nn.Embedding(480, self.embed_dims)
             self.enc_fc = Pseudo4DRegLinear(self.embed_dims, delta=False)
 
-        else:
+        elif self.decoder.deformable:
             self.reference_points_fc = Pseudo4DRegLinear(self.embed_dims, delta=False)
 
     def init_weights(self) -> None:
@@ -107,7 +107,7 @@ class TDTR(DeformableDETR):
                 m.init_weights()
         if self.as_two_stage:
             nn.init.xavier_uniform_(self.memory_trans_fc.weight)
-        else:
+        elif self.decoder.deformable:
             xavier_init(self.reference_points_fc, distribution='uniform', bias=0.)
         if self.query_from_enc:
             nn.init.xavier_uniform_(self.query_fc.weight)
@@ -188,10 +188,11 @@ class TDTR(DeformableDETR):
         # %% In one stage, the initial reference points of the decoder are derived by projecting the query embeddings.
         if not self.as_two_stage:
             topk_scores, topk_coords = None, None
-            reference_points_unact = self.reference_points_fc(query_pos)
+            if self.decoder.deformable:
+                reference_points_unact = self.reference_points_fc(query_pos)
 
         # %% De-noising training if triggered
-        if self.training and (self.dn_cfg is not None):
+        if self.training and (self.dn_cfg is not None) and self.decoder.deformable:
             # %% when de-noising training is enabled, generate dn_label_query and dn_bbox_query (inverse-sigmoid)
             # by adding random noise to ground truth labels and bboxes
             dn_label_query, dn_bbox_query, dn_mask, dn_meta = self.dn_query_generator(batch_data_samples)
@@ -214,7 +215,7 @@ class TDTR(DeformableDETR):
             query=query,
             query_pos=None if self.dynamic_query_pos else query_pos,
             memory=memory,
-            reference_points=reference_points_unact.sigmoid(),
+            reference_points=reference_points_unact.sigmoid() if self.decoder.deformable else torch.rand(1, 2, 3),
             dn_mask=dn_mask)
         head_inputs_dict = dict(
             enc_outputs_class=topk_scores,

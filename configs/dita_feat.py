@@ -22,6 +22,7 @@ model = dict(
     as_two_stage=False,
     query_from_enc=False,
     query_pos_from_enc=False,
+    dynamic_query_pos=False,
     num_feature_levels=4,
     data_preprocessor=dict(type='DetDataPreprocessor'),
     backbone=dict(type='PseudoBackbone', multi_scale=False),  # No backbone since we use pre-extracted features.
