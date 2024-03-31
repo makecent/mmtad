@@ -1,11 +1,14 @@
 from typing import Tuple, Dict, Optional
 
 import torch
-from mmdet.models import DINO, DeformableDETR
+from mmcv.cnn.bricks.transformer import MultiScaleDeformableAttention
+from mmdet.models import DeformableDETR
 from mmdet.models.layers import CdnQueryGenerator
 from mmdet.registry import MODELS
 from mmdet.structures import OptSampleList
-from torch import nn, Tensor
+from mmengine.model import xavier_init
+from torch import Tensor, nn
+from torch.nn.init import normal_
 
 from my_modules.layers.dita_layers import TdtrTransformerEncoder, TdtrTransformerDecoder
 from my_modules.layers.positional_encoding import SinePositional1dEncoding
@@ -70,8 +73,9 @@ class TDTR(DeformableDETR):
 
         # The initialization of positional queries of decoder
         if self.query_pos_from_enc:
-            self.query_pos_fc = nn.Linear(self.embed_dims, self.embed_dims)
-            self.query_pos_norm = nn.LayerNorm(self.embed_dims)
+            if not self.dynamic_query_pos:
+                self.query_pos_fc = nn.Linear(self.embed_dims, self.embed_dims)
+                self.query_pos_norm = nn.LayerNorm(self.embed_dims)
         else:
             self.query_pos_embedding = nn.Embedding(self.num_queries, self.embed_dims)
 
@@ -87,6 +91,29 @@ class TDTR(DeformableDETR):
             self.memory_trans_norm = nn.LayerNorm(self.embed_dims)
         else:
             self.reference_points_fc = Pseudo4DRegLinear(self.embed_dims, delta=False)
+        self.proposals = nn.Embedding(480, self.embed_dims)
+        self.enc_fc = Pseudo4DRegLinear(self.embed_dims, delta=False)
+
+    def init_weights(self) -> None:
+        """Initialize weights for Transformer and other components."""
+        super(DeformableDETR, self).init_weights()
+        for coder in self.encoder, self.decoder:
+            for p in coder.parameters():
+                if p.dim() > 1:
+                    nn.init.xavier_uniform_(p)
+        for m in self.modules():
+            if isinstance(m, MultiScaleDeformableAttention):
+                m.init_weights()
+        if self.as_two_stage:
+            nn.init.xavier_uniform_(self.memory_trans_fc.weight)
+        else:
+            xavier_init(self.reference_points_fc, distribution='uniform', bias=0.)
+        if self.query_from_enc:
+            nn.init.xavier_uniform_(self.query_fc.weight)
+        if self.query_pos_from_enc and not self.dynamic_query_pos:
+            nn.init.xavier_uniform_(self.query_pos_fc.weight)
+
+        normal_(self.level_embed)
 
     def forward_transformer(self, img_feats: Tuple[Tensor],
                             batch_data_samples: OptSampleList = None, ) -> Dict:
@@ -119,31 +146,34 @@ class TDTR(DeformableDETR):
             # get the predicted bbox offsets of the proposals by input memory to the detection head
             enc_outputs_offset_unact = self.bbox_head.reg_branches[self.decoder.num_layers](output_memory)
             # add the predicted bbox offsets and the proposals to get the predicted coordinates (inverse-normalized)
+            output_proposals = self.proposals.weight.unsqueeze(0).expand(batch_size, -1, -1)
+            output_proposals = self.enc_fc(output_proposals)
             enc_outputs_coord_unact = enc_outputs_offset_unact + output_proposals
             # use the coordinates of proposals of top-k classification scores as the initial decoder reference points
             topk_proposals_indices = torch.topk(enc_outputs_class.max(-1)[0], self.num_queries, dim=1)[1]
             topk_coords_unact = torch.gather(enc_outputs_coord_unact, 1,
                                              topk_proposals_indices.unsqueeze(-1).repeat(1, 1, 4))
+            topk_coords = topk_coords_unact.sigmoid()
             topk_coords_unact = topk_coords_unact.detach()
             reference_points_unact = topk_coords_unact
             # the top-k scores and coordinates are packed to be input to the detection head for computing encoder losses
             cls_out_features = self.bbox_head.cls_branches[self.decoder.num_layers].out_features
             topk_scores = torch.gather(enc_outputs_class, 1,
                                        topk_proposals_indices.unsqueeze(-1).repeat(1, 1, cls_out_features))
-            topk_coords = topk_coords_unact.sigmoid()
 
         # %% Compute initial decoder query and query_pos
         if self.query_from_enc:
             pos_trans_out = self.query_fc(
-                self.get_proposal_pos_embed(topk_coords_unact[..., ::2], num_pos_feats=256))
+                self.get_proposal_pos_embed(topk_coords_unact[..., ::2], num_pos_feats=self.embed_dims//2))
             query = self.query_norm(pos_trans_out)
         else:
             query = self.query_embedding.weight.unsqueeze(0).expand(batch_size, -1, -1)
 
         if self.query_pos_from_enc:
-            pos_trans_out = self.query_pos_fc(
-                self.get_proposal_pos_embed(topk_coords_unact[..., ::2], num_pos_feats=self.embed_dims))
-            query_pos = self.query_pos_norm(pos_trans_out)
+            if not self.dynamic_query_pos:
+                pos_trans_out = self.query_pos_fc(
+                    self.get_proposal_pos_embed(topk_coords_unact[..., ::2], num_pos_feats=self.embed_dims//2))
+                query_pos = self.query_pos_norm(pos_trans_out)
         else:
             query_pos = self.query_pos_embedding.weight.unsqueeze(0).expand(batch_size, -1, -1)
 

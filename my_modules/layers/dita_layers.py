@@ -101,6 +101,7 @@ class TdtrTransformerEncoder(DeformableDetrTransformerEncoder):
         else:
             for layer in self.layers:
                 query = layer(query, query_pos, key_padding_mask, **kwargs)
+                all_layers_query.append(query)
         if self.memory_fuse:
             query = torch.sum(torch.stack(all_layers_query), dim=0)
         return query
@@ -192,7 +193,7 @@ class TdtrTransformerDecoder(DeformableDetrTransformerDecoder):
 
         if self.return_intermediate:
             return torch.stack(intermediate), torch.stack(intermediate_reference_points)
-        return query, reference_points
+        return query.unsqueeze(0), reference_points.unsqueeze(0)
 
 
 class DitaTransformerDecoder(BaseModule):
