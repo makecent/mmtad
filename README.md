@@ -75,7 +75,7 @@ use PyTorch launcher, or `--launcher slurm` to use Slurm launcher.
 different number of GPUs. For example, if you want to use 8 GPUs, you may add `--cfg-options train_dataloader.batch_size=xxx`
 to reduce the batch_size on single GPU by 8 in order to keep the final batch size unchanged.
 - 
-# Reproduce TadTR
+# Reproduce [TadTR](https://arxiv.org/abs/2106.10271)
 ```terminal
 mmaction2  1.2.0      https://github.com/open-mmlab/mmaction2
 mmcv       2.1.0      https://github.com/open-mmlab/mmcv
@@ -98,7 +98,7 @@ Test (2 GPUs as an example):
 mim train mmaction configs/repo_actionformer_th14.py --gpus 2 --launcher pytorch --checkpoint work_dirs/repo_actionformer_th14/latest.pth --cfg-options train_dataloader.batch_size=1
 ```
 
-# Reproduce ActionFormer
+# Reproduce [ActionFormer](https://arxiv.org/abs/2202.07925)
 ```terminal
 mmaction2  1.2.0      https://github.com/open-mmlab/mmaction2
 mmcv       2.1.0      https://github.com/open-mmlab/mmcv
@@ -121,7 +121,7 @@ Test (2 GPUs as an example):
 ```terminal
 mim train mmaction configs/repo_actionformer_th14.py --gpus 2 --launcher pytorch --checkpoint work_dirs/repo_actionformer_th14/latest.pth --cfg-options train_dataloader.batch_size=1
 ```
-# Reproduce BasicTAD(TAD)
+# Reproduce [PlusTAD](https://arxiv.org/abs/2205.02717)
 ```terminal
 mmaction2  1.2.0      https://github.com/open-mmlab/mmaction2
 mmcv       2.1.0      https://github.com/open-mmlab/mmcv
