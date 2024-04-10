@@ -74,7 +74,17 @@ use PyTorch launcher, or `--launcher slurm` to use Slurm launcher.
 - The final batch_size is $NUM_GPUS * $CFG.train_dataloader.batch_size. You may need override some options when using 
 different number of GPUs. For example, if you want to use 8 GPUs, you may add `--cfg-options train_dataloader.batch_size=xxx`
 to reduce the batch_size on single GPU by 8 in order to keep the final batch size unchanged.
-- 
+
+# Reproduce [APN](https://arxiv.org/abs/2308.09268)
+**APN: Solve TAD with a 2D backbone (ResNet-50). Fast (6000+FPS) and competitive precision (avg. mAP=58% on THUMOS14).**
+
+*(Paper under review) Codes comming soon. Stay tuned!*
+
+# Reproduce DITA
+**DITA: DETR-like TAD model but state-of-the-art precision. Streamlined (no NMS, no anchors) and SOTA precision (first time exceeds 70% on THUMOS14).**
+
+*(Paper under review) Codes comming soon. Stay tuned!*
+
 # Reproduce [TadTR](https://arxiv.org/abs/2106.10271)
 ```terminal
 mmaction2  1.2.0      https://github.com/open-mmlab/mmaction2
