@@ -151,7 +151,7 @@ train_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='annotations/louis/thumos14_val.json',
+        ann_file='annotations/mmtad/thumos14_val.json',
         feat_stride=4,
         pre_load_feat=False,
         window_size=max_len,
@@ -172,7 +172,7 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='annotations/louis/thumos14_test.json',
+        ann_file='annotations/mmtad/thumos14_test.json',
         feat_stride=4,
         window_size=max_len,
         window_stride=int(max_len*0.25),  # overlap=0.25

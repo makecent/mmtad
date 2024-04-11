@@ -110,7 +110,7 @@ train_dataloader = dict(  # Config of train dataloader
     dataset=dict(  # Config of train dataset
         type='THUMOS14Dataset',
         filename_tmpl='img_{:05}.jpg',
-        ann_file='annotations/louis/thumos14_val.json',
+        ann_file='annotations/mmtad/thumos14_val.json',
         data_root=data_root,  # Root path to data, including both frames and ann_file
         data_prefix=dict(frames=data_prefix_train),  # Prefix of specific data, e.g., frames and ann_file
         pipeline=train_pipeline))
@@ -125,7 +125,7 @@ val_dataloader = dict(  # Config of validation dataloader
         window_stride=int(clip_len * frame_interval) * 0.25,
         frame_interval=frame_interval,
         filename_tmpl='img_{:05}.jpg',
-        ann_file='annotations/louis/thumos14_test.json',
+        ann_file='annotations/mmtad/thumos14_test.json',
         data_root=data_root,
         data_prefix=dict(frames=data_prefix_val),  # Prefix of specific data components
         pipeline=val_pipeline,

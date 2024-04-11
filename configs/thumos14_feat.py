@@ -23,7 +23,7 @@ train_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='annotations/louis/thumos14_val.json',
+        ann_file='annotations/mmtad/thumos14_val.json',
         feat_stride=8,
         window_size=128,
         window_stride=32,  # overlap=0.75
@@ -42,7 +42,7 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='annotations/louis/thumos14_test.json',
+        ann_file='annotations/mmtad/thumos14_test.json',
         feat_stride=8,
         window_size=128,
         window_stride=96,  # overlap=0.25
