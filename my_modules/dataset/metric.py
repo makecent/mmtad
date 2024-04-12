@@ -207,7 +207,7 @@ class TadMetric(BaseMetric):
                                 bboxes, scores, labels = bbox_voting(bboxes, scores, labels,
                                                                      _pred.bboxes, _pred.scores, _pred.labels,
                                                                      num_classes=len(self.dataset_meta['classes']),
-                                                                     iou_thr=self.voting_cfg.get('iou_thr', 0.01),
+                                                                     iou_thr=self.voting_cfg.get('iou_thr', 0.5),
                                                                      score_thr=self.voting_cfg.get('score_thr', 0))
                             _pred = InstanceData(bboxes=bboxes, scores=scores, labels=labels)
                             pred_in_overlaps.append(_pred)
@@ -223,10 +223,11 @@ class TadMetric(BaseMetric):
                     scores = bboxes_scores[:, -1]
                     labels = pred_v.labels[keep_idxs]
                     if self.voting_cfg is not None and len(bboxes) > 0:
-                        bboxes = bbox_voting(bboxes, labels, pred_v.bboxes, pred_v.scores,
-                                             len(self.dataset_meta['classes']), pred_v.labels,
-                                             iou_thr=self.voting_cfg.get('iou_thr', 0.01),
-                                             score_thr=self.voting_cfg.get('score_thr', 0))
+                        bboxes, scores, labels = bbox_voting(bboxes, scores, labels,
+                                                             pred_v.bboxes, pred_v.scores, pred_v.labels,
+                                                             num_classes=len(self.dataset_meta['classes']),
+                                                             iou_thr=self.voting_cfg.get('iou_thr', 0.5),
+                                                             score_thr=self.voting_cfg.get('score_thr', 0))
                     pred_v = InstanceData(bboxes=bboxes, scores=scores, labels=labels)
             sort_idxs = pred_v.scores.argsort(descending=True)
             pred_v = pred_v[sort_idxs]
