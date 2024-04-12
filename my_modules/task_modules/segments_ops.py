@@ -209,6 +209,7 @@ def bbox_voting(det_bboxes: Tensor, det_scores: Tensor, det_labels: Tensor,
         return voted_bboxes
 
     # %% Filter all boxes that have score less than score_thr
+    print(type(all_scores), all_scores, '\n\n')
     pos_score_mask = all_scores > score_thr
 
     all_bboxes = all_bboxes[pos_score_mask]
