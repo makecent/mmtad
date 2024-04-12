@@ -4,9 +4,9 @@ from typing import Optional, Sequence, Union, List
 
 import numpy as np
 import torch
-from mmdet.registry import METRICS
 from mmcv.ops import batched_nms
 from mmdet.evaluation.functional import eval_map
+from mmdet.registry import METRICS
 from mmdet.structures.bbox import bbox_overlaps
 from mmengine.evaluator import BaseMetric
 from mmengine.logging import MMLogger
@@ -204,10 +204,11 @@ class TadMetric(BaseMetric):
                             scores = bboxes_scores[:, -1]
                             labels = _pred.labels[keep_idxs]
                             if self.voting_cfg is not None and len(bboxes) > 0:
-                                bboxes = bbox_voting(bboxes, labels, _pred.bboxes, _pred.scores,
-                                                     len(self.dataset_meta['classes']), _pred.labels,
-                                                     iou_thr=self.voting_cfg.get('iou_thr', 0.01),
-                                                     score_thr=self.voting_cfg.get('score_thr', 0))
+                                bboxes, scores, labels = bbox_voting(bboxes, scores, labels,
+                                                                     _pred.bboxes, _pred.scores, _pred.labels,
+                                                                     num_classes=len(self.dataset_meta['classes']),
+                                                                     iou_thr=self.voting_cfg.get('iou_thr', 0.01),
+                                                                     score_thr=self.voting_cfg.get('score_thr', 0))
                             _pred = InstanceData(bboxes=bboxes, scores=scores, labels=labels)
                             pred_in_overlaps.append(_pred)
                         pred_not_in_overlaps = pred_v[~pred_v.in_overlap.max(-1)[0]]
