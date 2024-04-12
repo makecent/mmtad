@@ -144,7 +144,9 @@ param_scheduler = [
 optim_wrapper = dict(optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001))
 
 # evaluation settings
-val_evaluator = dict(type='TadMetric', iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
+val_evaluator = dict(type='TadMetric',
+                     merge_windows=True,
+                     iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
                      nms_cfg=dict(type='nms', iou_thr=0.6), voting_cfg=dict(iou_thr=0.6))
 test_evaluator = val_evaluator
 
