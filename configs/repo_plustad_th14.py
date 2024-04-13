@@ -122,7 +122,7 @@ val_dataloader = dict(  # Config of validation dataloader
     dataset=dict(  # Config of validation dataset
         type='THUMOS14Dataset',
         window_size=int(clip_len * frame_interval),
-        window_stride=int(clip_len * frame_interval) * 0.25,
+        window_stride=int(clip_len * frame_interval) * 0.75,
         frame_interval=frame_interval,
         filename_tmpl='img_{:05}.jpg',
         ann_file='annotations/mmtad/thumos14_test.json',
@@ -141,7 +141,8 @@ param_scheduler = [
          begin=40, end=1200, convert_to_iter_based=True)
 ]
 # optimizer
-optim_wrapper = dict(optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001))
+optim_wrapper = dict(optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001),
+                     clip_grad=dict(max_norm=40, norm_type=2))
 
 # evaluation settings
 val_evaluator = dict(type='TadMetric',
