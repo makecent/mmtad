@@ -66,8 +66,8 @@ data_prefix_val = 'rawframes/test'  # path to data for validation and testing
 
 clip_len = 192
 frame_interval = 5
-img_shape = (112, 112)
-img_shape_test = (128, 128)
+img_shape = (160, 160)
+img_shape_test = (160, 160)
 
 train_pipeline = [
     dict(type='RandomSlice',
@@ -75,7 +75,7 @@ train_pipeline = [
          frame_interval=frame_interval,
          iof_thr=0.75),
     dict(type='mmaction.RawFrameDecode'),
-    dict(type='mmaction.Resize', scale=(128, -1), keep_ratio=True),
+    dict(type='mmaction.Resize', scale=(180, -1), keep_ratio=True),
     dict(type='mmaction.RandomCrop', size=img_shape[0]),  # mmaction2 RandomCrop only supports square crop
     dict(type='mmaction.Flip', flip_ratio=0.5),
     dict(type='PhotoMetricDistortion3d',
@@ -94,7 +94,7 @@ train_pipeline = [
 
 val_pipeline = [
     dict(type='mmaction.RawFrameDecode'),
-    dict(type='mmaction.Resize', scale=(128, -1), keep_ratio=True),
+    dict(type='mmaction.Resize', scale=(180, -1), keep_ratio=True),
     dict(type='mmaction.CenterCrop', crop_size=img_shape_test),
     dict(type='Pad3d', size=(clip_len, *img_shape_test)),
     dict(type='mmaction.FormatShape', input_format='NCTHW'),
