@@ -57,7 +57,7 @@ model = dict(type='SingleStageDetector',
                             allowed_border=-1,
                             pos_weight=-1,
                             debug=False),
-             test_cfg=dict(nms_pre=300, score_thr=0.005))
+             test_cfg=dict(nms_pre=1000, score_thr=0.005))
 
 # dataset settings
 data_root = 'my_data/thumos14'  # Root path to data for training
@@ -138,7 +138,7 @@ train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=1200, val_begin=1, val_i
 param_scheduler = [
     dict(type='LinearLR', start_factor=0.1, by_epoch=True, begin=0, end=40, convert_to_iter_based=True),
     dict(type='CosineRestartLR', periods=[100] * 12, restart_weights=[1] * 12, eta_min=1e-4, by_epoch=True,
-         begin=40, end=1240, convert_to_iter_based=True)
+         begin=40, end=1200, convert_to_iter_based=True)
 ]
 # optimizer
 optim_wrapper = dict(optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001))
@@ -147,7 +147,9 @@ optim_wrapper = dict(optimizer=dict(type='SGD', lr=0.01, momentum=0.9, weight_de
 val_evaluator = dict(type='TadMetric',
                      merge_windows=True,
                      iou_thrs=[0.3, 0.4, 0.5, 0.6, 0.7],
-                     nms_cfg=dict(type='nms', iou_thr=0.6), voting_cfg=dict(iou_thr=0.6))
+                     max_per_video=1200,
+                     nms_cfg=dict(type='nms', iou_thr=0.5),
+                     voting_cfg=dict(iou_thr=0.5))
 test_evaluator = val_evaluator
 
 default_hooks = dict(logger=dict(interval=20, interval_exp_name=1000), checkpoint=dict(interval=100, max_keep_ckpts=12))
